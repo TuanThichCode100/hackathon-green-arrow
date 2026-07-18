@@ -15,5 +15,6 @@ class OverviewResponse(BaseModel):
     total_pop: int
     recv_rate: float
     not_responded: int
+    headmen_total: int
     headmen_confirmed: int
     active_alerts: int

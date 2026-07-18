@@ -4,12 +4,11 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import init_db
+from app.core.scheduler import start_scheduler
 
 # Import routers safely
 routers = []
 try:
-    from app.modules.weather.router import router as weather_router
-    routers.append(weather_router)
     from app.modules.communes.router import router as communes_router
     routers.append(communes_router)
     from app.modules.residents.router import router as residents_router
@@ -31,10 +30,22 @@ try:
 except ImportError as e:
     print(f"Warning: A router could not be imported. {e}")
 
+from app.core.seed import seed_database
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    
+    from app.core.database import SessionLocal
+    db = SessionLocal()
+    try:
+        seed_database(db)
+    finally:
+        db.close()
+        
+    scheduler = start_scheduler()
     yield
+    scheduler.shutdown()
 
 app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 

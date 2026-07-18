@@ -51,6 +51,7 @@ export const TIME_META = {
 export const VIEW_TITLES = {
   map: 'Bản đồ giám sát', overview: 'Tổng quan hệ thống', communes: 'Danh sách Xã',
   policy: 'Văn bản chỉ đạo (RAG)', channels: 'Thống kê', roles: 'Phân quyền',
+  database: 'Quản lý Dữ liệu Dân cư'
 };
 
 export const NAV = [
@@ -60,6 +61,7 @@ export const NAV = [
   { key: 'policy', icon: '🧠', label: 'Văn bản chỉ đạo (RAG)' },
   { key: 'channels', icon: '📡', label: 'Thống kê' },
   { key: 'roles', icon: '🔐', label: 'Phân quyền' },
+  { key: 'database', icon: '👥', label: 'Quản lý Dân cư' },
 ];
 
 // ---- model builders ----
@@ -160,7 +162,7 @@ export function buildModel(emergency, timeRange) {
       ];
   const logs = logBase.map((l) => ({ ...l, recipientsStr: fmt(l.recipients), statusLabel: 'Đã gửi', pillStyle: pill('#25ADE3', '#EAF7FD') }));
 
-  const activeCommunes = COMMUNES.filter((c) => statusOf(c, emergency) === 'alert').map((c) => c.district).filter((v, i, a) => a.indexOf(v) === i);
+  const activeCommunes = COMMUNES.filter((c) => statusOf(c, emergency) === 'alert').map((c) => c.name).filter((v, i, a) => a.indexOf(v) === i);
   const alertHeadline = 'Lũ quét & sạt lở tại ' + (activeCommunes.length ? activeCommunes.join(', ') : 'khu vực giám sát') + ' — ưu tiên sơ tán theo Công điện 04.';
 
   return {
@@ -188,7 +190,7 @@ export function buildDetail(id, emergency) {
   const hasLost = !!(emergency && st === 'alert' && c.lost && c.lost.length);
   const headBg = st === 'alert' ? 'linear-gradient(135deg,#C42B2B,#E23D3D)' : st === 'watch' ? 'linear-gradient(135deg,#0F1E2A,#2A4A5E)' : 'linear-gradient(135deg,#0F1E2A,#1E9E6A)';
   return {
-    id: c.id, icon: c.icon, name: c.name, district: c.district, hazard: emergency ? c.hazard : 'Không có cảnh báo',
+    id: c.id, icon: c.icon, name: c.name, hazard: emergency ? c.hazard : 'Không có cảnh báo',
     popStr: fmt(c.pop), receivedStr: fmt(received), notReceivedStr: fmt(notReceived),
     notReceivedColor: notReceived > c.pop * 0.15 ? '#E23D3D' : '#5A6675',
     rateStr: Math.round(rate * 100) + '%', rateColor: rateColor(rate),

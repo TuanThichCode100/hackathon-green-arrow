@@ -3,34 +3,27 @@
 1. **Dự án này là gì?**
 Hệ thống CRM giám sát & cảnh báo thời tiết cực đoan cho cán bộ tỉnh Điện Biên (DBWAS). Sử dụng AI Agent để tự động sinh bản tin, gửi đa kênh (Zalo, SMS, Auto-Call, Audio Loa), phân loại theo dân tộc/ngôn ngữ.
 
-2. **Mục tiêu hiện tại là gì?**
-Đối chiếu nghiệp vụ từ spec (Google Sheets) với frontend → thiết kế API schema → xây backend.
+6. **Mục tiêu hiện tại là gì?**
+Tiếp tục triển khai Vector RAG (pgvector) trên Supabase Cloud và ghép file âm thanh TTS thực tế.
 
 3. **Hệ thống đã hoàn thành những gì?**
-- Frontend Next.js 14 hoàn chỉnh giao diện CRM: Bản đồ Leaflet, Dashboard KPI, Danh sách xã, Thống kê kênh, Văn bản RAG, Phân quyền
-- 10 xã mock data, 4 kênh gửi tin, phân quyền 2 vai trò (Tỉnh/Xã)
-- Chế độ khẩn cấp + API call tới backend (POST /api/trigger-alert)
-- Đã phân tích đối chiếu 30 mục nghiệp vụ: 13 đạt, 9 đạt một phần, 8 thiếu (~43% đồng nhất)
-- Đã thiết kế 30+ endpoint API chia 9 nhóm
+- Đã Refactor Frontend từ JavaScript sang TypeScript, tái cấu trúc Dashboard monolith 48KB thành nhiều sub-components nhỏ trong `components/dashboard/`. Fix lỗi Build Type và Upgrade Next.js 16 + React 19 mới nhất.
+- Đã xử lý triệt để lỗi giật/nháy liên tục của Leaflet Map và lỗi _leaflet_pos do React re-render gọi API.
+- Frontend Next.js hoàn chỉnh giao diện CRM: Bản đồ Leaflet, Dashboard KPI, Danh sách xã, Thống kê kênh, Văn bản RAG, Phân quyền. Đã có Login Guard và Quản lý Dân cư.
+- Đã Dockerize Frontend và Backend. Chuyển đổi Database sang Supabase Cloud PostgreSQL.
+- Đã thiết kế kiến trúc Backend 9 Modules (Modular Monolith) với FastAPI.
+- Đã Brainstorm thiết kế cấu trúc Database lõi PostgreSQL + PostGIS và Vector RAG (pgvector).
+- Đã triển khai hoàn thiện Backend Module AI Agent tích hợp Gemini 1.5 Flash (Sinh bản tin khẩn cấp từ Open-Meteo và RAG Document) với luồng Human-in-the-loop (Cán bộ duyệt) an toàn tuyệt đối.
 
 4. **Đang làm gì?**
-Chờ duyệt phân tích & API schema → quyết định bước triển khai tiếp theo.
+- Tích hợp kết nối Frontend gọi trực tiếp API sinh bản tin (Draft) từ Agent Module.
 
 5. **Chưa làm gì?**
-- Backend (hoàn toàn trống)
-- Models AI (hoàn toàn trống)
-- Hiển thị dữ liệu thời tiết realtime trên frontend (thiếu hoàn toàn)
-- Quản lý cư dân/danh bạ SĐT
-- Mở rộng 115 xã thực tế
-- 25+ loại thiên tai
+- Triển khai Vector Search thực tế trên pgvector Supabase Cloud.
+- Ghép file âm thanh (TTS Templates) thực tế.
 
 6. **Những Block lớn là gì?**
-- Frontend: Next.js 14 (đã có, cần bổ sung weather panel + resident management)
-- Backend: Chưa khởi tạo (cần FastAPI/Django + PostgreSQL + Vector DB)
-- Models: Chưa khởi tạo (AI Agent sinh bản tin + TTS tiếng dân tộc)
-- External: Open-Meteo, OpenWeatherMap, Trạm KTTV, Zalo OA, SMS Gateway
+- Database: Không còn block. Đã migrate thành công lên Supabase Cloud, có sẵn pgvector.
 
 7. **Việc ưu tiên tiếp theo?**
-- Xây backend API framework (FastAPI recommended)
-- Kết nối nguồn dữ liệu thời tiết (Open-Meteo miễn phí)
-- Bổ sung weather widget trên frontend Dashboard
+- Triển khai Module AI Agent tích hợp LLM.

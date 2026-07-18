@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float
+from sqlalchemy import Column, Integer, String, Float, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -16,7 +16,7 @@ class Commune(Base):
 class Hamlet(Base):
     __tablename__ = "hamlets"
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    commune_id: Mapped[int] = mapped_column(Integer, index=True)
+    commune_id: Mapped[int] = mapped_column(Integer, ForeignKey("communes.id"), index=True)
     name: Mapped[str] = mapped_column(String)
     headman_name: Mapped[str] = mapped_column(String, nullable=True)
     headman_phone: Mapped[str] = mapped_column(String, nullable=True)

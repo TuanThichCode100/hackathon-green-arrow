@@ -15,3 +15,22 @@ def get_residents(commune_id: Optional[int] = None, ethnic: Optional[str] = None
 @router.post("", response_model=APIResponse[schemas.ResidentResponse])
 def create(data: schemas.ResidentCreate, db: Session = Depends(get_db)):
     return {"data": service.create_resident(db, data)}
+
+@router.put("/{id}", response_model=APIResponse[schemas.ResidentResponse])
+def update(id: int, data: schemas.ResidentUpdate, db: Session = Depends(get_db)):
+    res = service.update_resident(db, id, data)
+    if not res:
+        raise HTTPException(status_code=404, detail="Resident not found")
+    return {"data": res}
+
+@router.delete("/{id}", response_model=APIResponse[bool])
+def delete(id: int, db: Session = Depends(get_db)):
+    res = service.delete_resident(db, id)
+    if not res:
+        raise HTTPException(status_code=404, detail="Resident not found")
+    return {"data": True}
+
+@router.post("/import", response_model=APIResponse[int])
+def import_csv(data: schemas.ResidentImport, db: Session = Depends(get_db)):
+    # Data is sent from frontend after parsing CSV/Excel
+    return {"data": service.import_csv(db, [r.model_dump() for r in data.records])}

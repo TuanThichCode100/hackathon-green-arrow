@@ -1,18 +1,6 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: greenforecast-db
-    restart: always
-    environment:
-      POSTGRES_USER: greenforecast
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: greenforecast_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
 
   backend:
     build: 
@@ -20,10 +8,8 @@ services:
       dockerfile: Dockerfile
     container_name: greenforecast-backend
     restart: always
-    depends_on:
-      - db
     environment:
-      - DATABASE_URL=postgresql://greenforecast:password123@db:5432/greenforecast_db
+      - DATABASE_URL=postgresql://postgres.qunzkuxuduqmqyjvtuqf:A07180295e%40%40@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres
       - OPEN_METEO_BASE_URL=https://api.open-meteo.com/v1
       - CORS_ORIGINS=["http://localhost:3000", "http://frontend:3000"]
     ports:
@@ -44,5 +30,3 @@ services:
     ports:
       - "3000:3000"
 
-volumes:
-  pgdata:

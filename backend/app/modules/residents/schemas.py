@@ -20,3 +20,6 @@ class ResidentResponse(ResidentCreate):
     id: int
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+class ResidentImport(BaseModel):
+    records: list[ResidentCreate]

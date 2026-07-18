@@ -11,6 +11,14 @@ router = APIRouter(prefix="/api/agent", tags=["Agent"])
 def list_decisions(page: int = 1, limit: int = 50, db: Session = Depends(get_db)):
     return {"data": service.get_decisions(db, page, limit)}
 
+@router.post("/draft", response_model=APIResponse[schemas.DecisionResponse])
+def create_draft(req: schemas.DraftBulletinRequest, db: Session = Depends(get_db)):
+    return {"data": service.draft_bulletin(db, req)}
+
+@router.post("/approve/{decision_id}", response_model=APIResponse[schemas.DecisionResponse])
+def approve_draft(decision_id: int, db: Session = Depends(get_db)):
+    return {"data": service.approve_bulletin(db, decision_id)}
+
 @router.post("/manual-trigger", response_model=APIResponse[schemas.DecisionResponse])
 def trigger(req: schemas.ManualTriggerRequest, db: Session = Depends(get_db)):
     return {"data": service.manual_trigger(db, req)}
