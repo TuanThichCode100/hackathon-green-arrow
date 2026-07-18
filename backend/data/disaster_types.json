@@ -1,0 +1,32 @@
+[
+  {
+    "id": "heavy_rain",
+    "name": "Mưa lớn",
+    "icon": "🌧️",
+    "color": "#2563EB"
+  },
+  {
+    "id": "landslide",
+    "name": "Sạt lở",
+    "icon": "⛰️",
+    "color": "#B45309"
+  },
+  {
+    "id": "storm",
+    "name": "Dông lốc",
+    "icon": "🌪️",
+    "color": "#7C3AED"
+  },
+  {
+    "id": "hail",
+    "name": "Mưa đá",
+    "icon": "🧊",
+    "color": "#0891B2"
+  },
+  {
+    "id": "flood",
+    "name": "Lũ lụt",
+    "icon": "🌊",
+    "color": "#DC2626"
+  }
+]

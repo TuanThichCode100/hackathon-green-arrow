@@ -1,0 +1,54 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+
+from app.core.config import settings
+from app.core.database import init_db
+
+# Import routers safely
+routers = []
+try:
+    from app.modules.weather.router import router as weather_router
+    routers.append(weather_router)
+    from app.modules.communes.router import router as communes_router
+    routers.append(communes_router)
+    from app.modules.residents.router import router as residents_router
+    routers.append(residents_router)
+    from app.modules.predictions.router import router as predictions_router
+    routers.append(predictions_router)
+    from app.modules.stats.router import router as stats_router
+    routers.append(stats_router)
+    from app.modules.auth.router import router as auth_router
+    routers.append(auth_router)
+    from app.modules.agent.router import router as agent_router
+    routers.append(agent_router)
+    from app.modules.notifications.router import router as notif_router
+    routers.append(notif_router)
+    from app.modules.documents.router import router as docs_router
+    routers.append(docs_router)
+    from app.modules.disaster_types.router import router as disaster_router
+    routers.append(disaster_router)
+except ImportError as e:
+    print(f"Warning: A router could not be imported. {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+for r in routers:
+    app.include_router(r)
+
+@app.get("/")
+def root():
+    return {"message": "GreenForecast API is running"}

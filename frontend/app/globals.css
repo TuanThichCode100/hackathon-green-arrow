@@ -1,0 +1,121 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Feather Bold', 'DIN', 'Tahoma', system-ui, sans-serif;
+  color: #0F1E2A;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c3ccd6;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+a {
+  color: #1F86B4;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #25ADE3;
+}
+
+@keyframes gf-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(226, 61, 61, .55);
+  }
+
+  70% {
+    box-shadow: 0 0 0 14px rgba(226, 61, 61, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(226, 61, 61, 0);
+  }
+}
+
+@keyframes gf-blink {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: .35;
+  }
+}
+
+@keyframes gf-slidein {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes gf-fadeup {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gf-toastin {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.gf-lost-pin {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #E23D3D;
+  border: 2.5px solid #fff;
+  animation: gf-pulse 1.6s infinite;
+}
+
+.leaflet-container {
+  font-family: 'Feather Bold', 'DIN', 'Tahoma', system-ui, sans-serif;
+}
+
+/* hover states (ported from style-hover in the prototype) */
+.gf-commune-card:hover {
+  border-color: #CBEBF9 !important;
+  background: #F5F8FB !important;
+}
+
+.gf-table-row:hover {
+  background: #F7FBFE !important;
+}

@@ -1,0 +1,41 @@
+[
+  {
+    "name": "Thanh Nưa",
+    "lat": 21.3,
+    "lng": 102.98,
+    "population": 13500,
+    "hamlets": [
+      {
+        "name": "Pom Lót",
+        "headman": "Lò Văn Pâng",
+        "population": 3200
+      }
+    ]
+  },
+  {
+    "name": "Mường Nhé",
+    "lat": 21.17,
+    "lng": 102.47,
+    "population": 12400,
+    "hamlets": [
+      {
+        "name": "Nậm Pố",
+        "headman": "Vàng A Của",
+        "population": 2100
+      }
+    ]
+  },
+  {
+    "name": "Tủa Chùa",
+    "lat": 21.93,
+    "lng": 103.38,
+    "population": 11200,
+    "hamlets": [
+      {
+        "name": "Tả Sìn Thàng",
+        "headman": "Mùa A Kỷ",
+        "population": 3100
+      }
+    ]
+  }
+]
