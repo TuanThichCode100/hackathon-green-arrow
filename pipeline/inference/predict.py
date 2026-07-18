@@ -18,7 +18,12 @@ IDENTITY_COLUMNS = ["time", "latitude", "longitude"]
 
 
 def load_model(path: str | Path) -> DisasterModelBundle:
-    model = joblib.load(Path(path))
+    model_path = Path(path)
+    manifest_path = model_path.parent / "best.json"
+    if model_path.name == "disaster_model.joblib" and manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        model_path = model_path.parent / manifest["model_path"]
+    model = joblib.load(model_path)
     if not isinstance(model, DisasterModelBundle):
         raise TypeError("Artifact is not a DisasterModelBundle")
     return model

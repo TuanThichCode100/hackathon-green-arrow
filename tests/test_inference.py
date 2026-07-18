@@ -16,6 +16,7 @@ class InferencePipelineTest(unittest.TestCase):
             validation_fraction=0.25,
             max_iterations=5,
             require_calibration=False,
+            show_progress=False,
         )
         model_input = training_data.iloc[-2:][MODEL_FEATURE_COLUMNS].copy()
         model_input.insert(0, "longitude", 103.023)
@@ -34,6 +35,7 @@ class InferencePipelineTest(unittest.TestCase):
             validation_fraction=0.25,
             max_iterations=10,
             require_calibration=False,
+            show_progress=False,
         )
         model_input = training_data.iloc[-1:][MODEL_FEATURE_COLUMNS].copy()
         model_input.insert(0, "longitude", 103.023)

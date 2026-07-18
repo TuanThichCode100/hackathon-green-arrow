@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
+import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import joblib
 import numpy as np
 import pandas as pd
 import sklearn
+from filelock import FileLock
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import (
     average_precision_score,
@@ -23,6 +29,7 @@ from sklearn.metrics import (
 )
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
+from tqdm.auto import tqdm
 
 from pipeline.shared.meteo_feature_mapping import MODEL_FEATURE_COLUMNS
 from pipeline.shared.model_bundle import (
@@ -47,6 +54,25 @@ LABEL_NAMES = {
     "y_mua_da": "Mưa đá",
     "y_lu_lut": "Lũ lụt",
 }
+
+ASCII_LABEL_NAMES = {
+    "y_mua_lon": "Mua lon",
+    "y_sat_lo": "Sat lo",
+    "y_dong_loc": "Dong loc",
+    "y_mua_da": "Mua da",
+    "y_lu_lut": "Lu lut",
+}
+
+
+@dataclass(frozen=True)
+class ArtifactSaveResult:
+    run_directory: Path
+    run_model_path: Path
+    run_metrics_path: Path
+    best_model_path: Path
+    best_metrics_path: Path
+    experiment_directory: Path
+    promoted_to_best: bool
 
 
 def prepare_training_data(
@@ -197,13 +223,50 @@ def _target_metrics(
         if has_both_classes
         else None,
         "average_precision": float(average_precision_score(labels, probabilities))
-        if labels.sum() > 0
+        if has_both_classes
         else None,
         "brier_score": float(brier_score_loss(labels, probabilities)),
         "precision": float(precision_score(labels, predictions, zero_division=0)),
         "recall": float(recall_score(labels, predictions, zero_division=0)),
         "f1": float(f1_score(labels, predictions, zero_division=0)),
     }
+
+
+def _metric_text(value: float | int | None, digits: int = 4) -> str:
+    if value is None:
+        return "N/A"
+    return f"{float(value):.{digits}f}"
+
+
+def _display_label(target: str) -> str:
+    label = LABEL_NAMES[target]
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        label.encode(encoding)
+    except (LookupError, UnicodeEncodeError):
+        return ASCII_LABEL_NAMES[target]
+    return label
+
+
+def _validation_result_text(
+    index: int, target: str, metrics: dict[str, Any]
+) -> str:
+    return (
+        f"[VALIDATE {index}/{len(TARGET_COLUMNS)}] {_display_label(target)} "
+        f"({target}) | time={metrics['timing_seconds']['validation']:.2f}s "
+        f"| support={metrics['positive_validation_rows']}/"
+        f"{metrics['validation_rows']} "
+        f"| prevalence={metrics['validation_prevalence']:.6f} "
+        f"| PR-AUC={_metric_text(metrics['average_precision'])} "
+        f"| PR-lift={_metric_text(metrics['pr_auc_lift_over_prevalence'], 2)}x "
+        f"| ROC-AUC={_metric_text(metrics['roc_auc'])} "
+        f"| Brier={_metric_text(metrics['brier_score'], 6)} "
+        f"| precision={_metric_text(metrics['precision'])} "
+        f"| recall={_metric_text(metrics['recall'])} "
+        f"| F1={_metric_text(metrics['f1'])} "
+        f"| threshold={_metric_text(metrics['threshold'], 2)} "
+        f"| calibrated={metrics['probability_calibrated']}"
+    )
 
 
 def train_disaster_models(
@@ -215,6 +278,7 @@ def train_disaster_models(
     max_iterations: int = 200,
     random_state: int = 42,
     require_calibration: bool = True,
+    show_progress: bool = True,
 ) -> tuple[DisasterModelBundle, dict[str, Any]]:
     """Train and calibrate one future-horizon probability model per hazard."""
 
@@ -258,54 +322,208 @@ def train_disaster_models(
     validation_frame = prepared.loc[validation_mask]
 
     thresholds: dict[str, float] = {}
-    metrics: dict[str, dict[str, float | int | None]] = {}
+    metrics: dict[str, dict[str, Any]] = {}
+    timings: dict[str, dict[str, float]] = {
+        target: {} for target in TARGET_COLUMNS
+    }
+    base_models: dict[str, Pipeline | ConstantProbabilityModel] = {}
     calibrated_models: dict[
         str, ConstantProbabilityModel | PlattCalibratedModel
     ] = {}
-    for index, target in enumerate(TARGET_COLUMNS):
-        base_model = _fit_target(
-            train_frame[MODEL_FEATURE_COLUMNS],
-            train_frame[target],
-            max_iterations=max_iterations,
-            random_state=random_state + index,
-        )
-        calibrated_model = _calibrate_target(
-            base_model,
-            calibration_frame[MODEL_FEATURE_COLUMNS],
-            calibration_frame[target],
-        )
-        is_calibrated = bool(
-            isinstance(calibrated_model, PlattCalibratedModel)
-            and calibrated_model.calibrator is not None
-        )
-        if require_calibration and not is_calibrated:
-            raise ValueError(
-                f"Cannot calibrate {target}: its training/calibration slices need "
-                "both classes with at least two calibration samples per class. "
-                "Adjust the time split/data or explicitly allow uncalibrated scores."
+    pipeline_started = perf_counter()
+    train_messages: list[str] = []
+
+    with tqdm(
+        TARGET_COLUMNS,
+        desc="TRAIN",
+        unit="model",
+        disable=not show_progress,
+        dynamic_ncols=True,
+        leave=True,
+        file=sys.stdout,
+    ) as train_progress:
+        for index, target in enumerate(train_progress):
+            started = perf_counter()
+            train_progress.set_postfix_str(
+                f"{index + 1}/5 {_display_label(target)}"
             )
-        calibrated_models[target] = calibrated_model
-        calibration_probabilities = _positive_probability(
-            calibrated_model, calibration_frame[MODEL_FEATURE_COLUMNS]
+            base_models[target] = _fit_target(
+                train_frame[MODEL_FEATURE_COLUMNS],
+                train_frame[target],
+                max_iterations=max_iterations,
+                random_state=random_state + index,
+            )
+            timings[target]["train"] = perf_counter() - started
+            train_messages.append(
+                    f"[TRAIN {index + 1}/5] {_display_label(target)} ({target}) "
+                    f"| time={timings[target]['train']:.2f}s "
+                    f"| support={int(train_frame[target].sum())}/"
+                    f"{len(train_frame)}"
+            )
+    if show_progress:
+        print(*train_messages, sep="\n", flush=True)
+
+    calibration_messages: list[str] = []
+    with tqdm(
+        TARGET_COLUMNS,
+        desc="CALIBRATE",
+        unit="model",
+        disable=not show_progress,
+        dynamic_ncols=True,
+        leave=True,
+        file=sys.stdout,
+    ) as calibration_progress:
+        for index, target in enumerate(calibration_progress):
+            started = perf_counter()
+            calibration_progress.set_postfix_str(
+                f"{index + 1}/5 {_display_label(target)}"
+            )
+            calibrated_model = _calibrate_target(
+                base_models[target],
+                calibration_frame[MODEL_FEATURE_COLUMNS],
+                calibration_frame[target],
+            )
+            is_calibrated = bool(
+                isinstance(calibrated_model, PlattCalibratedModel)
+                and calibrated_model.calibrator is not None
+            )
+            if require_calibration and not is_calibrated:
+                raise ValueError(
+                    f"Cannot calibrate {target}: its training/calibration slices need "
+                    "both classes with at least two calibration samples per class. "
+                    "Adjust the time split/data or explicitly allow uncalibrated scores."
+                )
+            calibrated_models[target] = calibrated_model
+            calibration_probabilities = _positive_probability(
+                calibrated_model, calibration_frame[MODEL_FEATURE_COLUMNS]
+            )
+            threshold = _choose_threshold(
+                calibration_frame[target], calibration_probabilities
+            )
+            thresholds[target] = threshold
+            timings[target]["calibration"] = perf_counter() - started
+            calibration_messages.append(
+                    f"[CALIBRATE {index + 1}/5] {_display_label(target)} "
+                    f"({target}) | time={timings[target]['calibration']:.2f}s "
+                    f"| support={int(calibration_frame[target].sum())}/"
+                    f"{len(calibration_frame)} "
+                    f"| threshold={threshold:.2f} "
+                    f"| calibrated={is_calibrated}"
+            )
+    if show_progress:
+        print(*calibration_messages, sep="\n", flush=True)
+
+    validation_messages: list[str] = []
+    with tqdm(
+        TARGET_COLUMNS,
+        desc="VALIDATE",
+        unit="model",
+        disable=not show_progress,
+        dynamic_ncols=True,
+        leave=True,
+        file=sys.stdout,
+    ) as validation_progress:
+        for index, target in enumerate(validation_progress):
+            started = perf_counter()
+            validation_progress.set_postfix_str(
+                f"{index + 1}/5 {_display_label(target)}"
+            )
+            calibrated_model = calibrated_models[target]
+            threshold = thresholds[target]
+            validation_probabilities = _positive_probability(
+                calibrated_model, validation_frame[MODEL_FEATURE_COLUMNS]
+            )
+            metrics[target] = _target_metrics(
+                validation_frame[target], validation_probabilities, threshold
+            )
+            metrics[target]["positive_training_rows"] = int(
+                train_frame[target].sum()
+            )
+            metrics[target]["positive_calibration_rows"] = int(
+                calibration_frame[target].sum()
+            )
+            metrics[target]["positive_validation_rows"] = int(
+                validation_frame[target].sum()
+            )
+            metrics[target]["validation_prevalence"] = float(
+                validation_frame[target].mean()
+            )
+            metrics[target]["validation_rows"] = len(validation_frame)
+            metrics[target]["probability_calibrated"] = bool(
+                isinstance(calibrated_model, PlattCalibratedModel)
+                and calibrated_model.calibrator is not None
+            )
+            prevalence = metrics[target]["validation_prevalence"]
+            average_precision = metrics[target]["average_precision"]
+            metrics[target]["pr_auc_lift_over_prevalence"] = (
+                float(average_precision) / float(prevalence)
+                if average_precision is not None and prevalence > 0
+                else None
+            )
+            timings[target]["validation"] = perf_counter() - started
+            metrics[target]["timing_seconds"] = timings[target]
+            validation_messages.append(
+                _validation_result_text(index + 1, target, metrics[target])
+            )
+    if show_progress:
+        print(*validation_messages, sep="\n", flush=True)
+
+    average_precisions = [
+        float(target_metrics["average_precision"])
+        for target_metrics in metrics.values()
+        if target_metrics["average_precision"] is not None
+    ]
+    macro_average_precision = (
+        float(np.mean(average_precisions))
+        if len(average_precisions) == len(TARGET_COLUMNS)
+        else None
+    )
+    selection_eligible = macro_average_precision is not None
+    total_pipeline_seconds = perf_counter() - pipeline_started
+    if show_progress:
+        print(
+            "[SUMMARY] "
+            f"total_time={total_pipeline_seconds:.2f}s "
+            f"| macro_PR-AUC={_metric_text(macro_average_precision)} "
+            f"| eligible_for_promotion={selection_eligible}",
+            flush=True,
         )
-        threshold = _choose_threshold(
-            calibration_frame[target], calibration_probabilities
+    if require_calibration and not selection_eligible:
+        invalid_targets = [
+            target
+            for target, target_metrics in metrics.items()
+            if target_metrics["average_precision"] is None
+        ]
+        raise ValueError(
+            "Validation must contain both classes for every target before model "
+            f"selection. Invalid targets: {invalid_targets}"
         )
-        thresholds[target] = threshold
-        validation_probabilities = _positive_probability(
-            calibrated_model, validation_frame[MODEL_FEATURE_COLUMNS]
-        )
-        metrics[target] = _target_metrics(
-            validation_frame[target], validation_probabilities, threshold
-        )
-        metrics[target]["positive_training_rows"] = int(train_frame[target].sum())
-        metrics[target]["positive_calibration_rows"] = int(
-            calibration_frame[target].sum()
-        )
-        metrics[target]["positive_validation_rows"] = int(
-            validation_frame[target].sum()
-        )
-        metrics[target]["probability_calibrated"] = is_calibrated
+
+    fingerprint_columns = [
+        "location_id",
+        "time",
+        *MODEL_FEATURE_COLUMNS,
+        *TARGET_COLUMNS,
+    ]
+    row_hashes = pd.util.hash_pandas_object(
+        prepared[fingerprint_columns], index=False
+    ).values
+    dataset_fingerprint = hashlib.sha256(row_hashes.tobytes()).hexdigest()
+    comparison_protocol = {
+        "dataset_fingerprint": dataset_fingerprint,
+        "forecast_horizon_hours": forecast_horizon_hours,
+        "calibration_fraction": calibration_fraction,
+        "validation_fraction": validation_fraction,
+        "calibration_start_time": pd.Timestamp(calibration_start_time).isoformat(),
+        "validation_start_time": pd.Timestamp(validation_start_time).isoformat(),
+        "feature_columns": MODEL_FEATURE_COLUMNS,
+        "target_columns": TARGET_COLUMNS,
+    }
+    experiment_key = hashlib.sha256(
+        json.dumps(
+            comparison_protocol, ensure_ascii=False, sort_keys=True
+        ).encode("utf-8")
+    ).hexdigest()[:16]
     created_at = datetime.now(timezone.utc).isoformat()
     bundle = DisasterModelBundle(
         models=calibrated_models,
@@ -328,6 +546,18 @@ def train_disaster_models(
         "validation_start_time": pd.Timestamp(validation_start_time).isoformat(),
         "forecast_horizon_hours": forecast_horizon_hours,
         "feature_columns": MODEL_FEATURE_COLUMNS,
+        "timing_seconds": {
+            "total": total_pipeline_seconds,
+            "targets": timings,
+        },
+        "selection": {
+            "metric": "macro_average_precision",
+            "score": macro_average_precision,
+            "higher_is_better": True,
+            "eligible_for_promotion": selection_eligible,
+            "experiment_key": experiment_key,
+            "comparison_protocol": comparison_protocol,
+        },
         "targets": metrics,
     }
     return bundle, report
@@ -344,16 +574,132 @@ def read_training_data(path: str | Path) -> pd.DataFrame:
 
 def save_training_artifacts(
     bundle: DisasterModelBundle, report: dict[str, Any], output_dir: str | Path
-) -> tuple[Path, Path]:
+) -> ArtifactSaveResult:
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    model_path = directory / "disaster_model.joblib"
-    metrics_path = directory / "metrics.json"
-    joblib.dump(bundle, model_path)
-    metrics_path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+
+    created_at = datetime.fromisoformat(report["created_at"])
+    run_id = created_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    run_directory = directory / "runs" / run_id
+    run_directory.mkdir(parents=True, exist_ok=False)
+    run_model_path = run_directory / "disaster_model.joblib"
+    run_metrics_path = run_directory / "metrics.json"
+    best_model_path = directory / "disaster_model.joblib"
+    best_metrics_path = directory / "metrics.json"
+
+    selection = report.get("selection", {})
+    candidate_score = selection.get("score")
+    experiment_key = selection.get("experiment_key", "legacy")
+    eligible = bool(selection.get("eligible_for_promotion", False))
+    experiment_directory = directory / "experiments" / experiment_key
+    experiment_model_path = experiment_directory / "disaster_model.joblib"
+    experiment_metrics_path = experiment_directory / "metrics.json"
+    experiment_manifest_path = experiment_directory / "best.json"
+    root_manifest_path = directory / "best.json"
+
+    run_report = {
+        **report,
+        "artifact": {
+            "run_id": run_id,
+            "experiment_key": experiment_key,
+        },
+    }
+    joblib.dump(bundle, run_model_path)
+    run_metrics_path.write_text(
+        json.dumps(run_report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    return model_path, metrics_path
+
+    promoted = False
+    best_score = None
+    lock = FileLock(str(directory / ".promotion.lock"), timeout=30)
+    with lock:
+        if experiment_metrics_path.exists():
+            existing = json.loads(
+                experiment_metrics_path.read_text(encoding="utf-8")
+            )
+            best_score = existing.get("selection", {}).get("score")
+        promoted = eligible and (
+            not experiment_model_path.exists()
+            or (
+                candidate_score is not None
+                and (best_score is None or float(candidate_score) > float(best_score))
+            )
+        )
+
+        run_report["artifact"].update(
+            {
+                "promoted_to_best": promoted,
+                "previous_best_score": best_score,
+            }
+        )
+        serialized_report = json.dumps(
+            run_report, ensure_ascii=False, indent=2
+        )
+        run_metrics_path.write_text(serialized_report, encoding="utf-8")
+
+        if promoted:
+            experiment_directory.mkdir(parents=True, exist_ok=True)
+            temporary_experiment_model = experiment_directory / ".model.tmp"
+            temporary_experiment_metrics = experiment_directory / ".metrics.tmp"
+            joblib.dump(bundle, temporary_experiment_model)
+            temporary_experiment_metrics.write_text(
+                serialized_report, encoding="utf-8"
+            )
+            os.replace(temporary_experiment_model, experiment_model_path)
+            os.replace(temporary_experiment_metrics, experiment_metrics_path)
+
+            temporary_best_model = directory / ".best-model.tmp"
+            temporary_best_metrics = directory / ".best-metrics.tmp"
+            joblib.dump(bundle, temporary_best_model)
+            temporary_best_metrics.write_text(serialized_report, encoding="utf-8")
+            os.replace(temporary_best_model, best_model_path)
+            os.replace(temporary_best_metrics, best_metrics_path)
+
+            root_manifest = {
+                "run_id": run_id,
+                "experiment_key": experiment_key,
+                "model_path": str(
+                    run_model_path.relative_to(directory)
+                ).replace("\\", "/"),
+                "metrics_path": str(
+                    run_metrics_path.relative_to(directory)
+                ).replace("\\", "/"),
+            }
+            experiment_manifest = {
+                **root_manifest,
+                "model_path": os.path.relpath(
+                    run_model_path, experiment_directory
+                ).replace("\\", "/"),
+                "metrics_path": os.path.relpath(
+                    run_metrics_path, experiment_directory
+                ).replace("\\", "/"),
+            }
+            temporary_experiment_manifest = (
+                experiment_directory / ".best-manifest.tmp"
+            )
+            temporary_root_manifest = directory / ".best-manifest.tmp"
+            temporary_experiment_manifest.write_text(
+                json.dumps(experiment_manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            temporary_root_manifest.write_text(
+                json.dumps(root_manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            os.replace(
+                temporary_experiment_manifest, experiment_manifest_path
+            )
+            os.replace(temporary_root_manifest, root_manifest_path)
+
+    return ArtifactSaveResult(
+        run_directory=run_directory,
+        run_model_path=run_model_path,
+        run_metrics_path=run_metrics_path,
+        best_model_path=best_model_path,
+        best_metrics_path=best_metrics_path,
+        experiment_directory=experiment_directory,
+        promoted_to_best=promoted,
+    )
 
 
 def main() -> None:
@@ -370,6 +716,11 @@ def main() -> None:
         action="store_true",
         help="Allow raw scores when a target cannot be probability-calibrated",
     )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable tqdm progress bars",
+    )
     args = parser.parse_args()
 
     bundle, report = train_disaster_models(
@@ -380,12 +731,19 @@ def main() -> None:
         max_iterations=args.max_iterations,
         random_state=args.random_state,
         require_calibration=not args.allow_uncalibrated,
+        show_progress=not args.no_progress,
     )
-    model_path, metrics_path = save_training_artifacts(
-        bundle, report, args.output_dir
-    )
-    print(f"Model: {model_path}")
-    print(f"Metrics: {metrics_path}")
+    saved = save_training_artifacts(bundle, report, args.output_dir)
+    print(f"Run model: {saved.run_model_path}")
+    print(f"Run metrics: {saved.run_metrics_path}")
+    if saved.promoted_to_best:
+        print(f"New best model: {saved.best_model_path}")
+        print(f"Best metrics: {saved.best_metrics_path}")
+        print(f"Experiment best: {saved.experiment_directory}")
+    elif not saved.best_model_path.exists():
+        print("Run archived but not eligible for best-model promotion.")
+    else:
+        print(f"Best model unchanged: {saved.best_model_path}")
 
 
 if __name__ == "__main__":

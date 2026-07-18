@@ -40,6 +40,17 @@ python -m pipeline.training.train `
   --max-iterations 200
 ```
 
+Hoặc trên Windows, chạy toàn bộ training bằng một lệnh:
+
+```bat
+train_model.bat "C:\path\weather_merged_2021_2026_labeled.csv" artifacts
+```
+
+Có thể thay đổi cấu hình BAT bằng environment variable:
+`FORECAST_HORIZON_HOURS`, `CALIBRATION_FRACTION`, `VALIDATION_FRACTION` và
+`MAX_ITERATIONS`. Chỉ với smoke test/data nhỏ, có thể đặt
+`ALLOW_UNCALIBRATED=1`; không nên dùng cho model production.
+
 Pipeline sẽ:
 
 1. kiểm tra schema/kiểu dữ liệu và loại các biến hằng/trùng đã chỉ ra trong
@@ -52,9 +63,51 @@ Pipeline sẽ:
 5. huấn luyện một `HistGradientBoostingClassifier` có cân bằng lớp cho mỗi nhãn;
 6. hiệu chỉnh xác suất bằng Platt scaling trên calibration set, chọn threshold
    trên calibration set và báo metric trên validation độc lập;
-7. lưu:
-   - `artifacts/disaster_model.joblib`
-   - `artifacts/metrics.json`
+7. hiển thị `tqdm` cho 15 phase: train, calibrate và validate của 5 nhãn;
+8. lưu mọi lần chạy và chỉ promote model có macro PR-AUC tốt hơn:
+
+```text
+artifacts/
+├── disaster_model.joblib       # best của experiment được promote gần nhất
+├── metrics.json                # metrics + experiment_key tương ứng
+├── best.json                   # manifest atomic, nguồn sự thật của active best
+├── experiments/
+│   └── <experiment_key>/
+│       ├── disaster_model.joblib  # best trong cùng dataset/protocol
+│       └── metrics.json
+└── runs/
+    └── 20260719T...Z/
+        ├── disaster_model.joblib
+        └── metrics.json
+```
+
+`experiment_key` được tạo từ fingerprint của dataset, horizon, time split và
+feature contract. Các run khác experiment không bị so điểm với nhau. Một run
+chỉ được promote khi validation có cả positive/negative và PR-AUC hợp lệ cho đủ
+5 thiên tai. Việc promote dùng file lock; model/metrics của mỗi run là bất biến
+và manifest `best.json` được atomic replace cuối cùng. Inference/evaluator sẽ
+tự resolve manifest khi nhận `artifacts/disaster_model.joblib`, nên không thể
+đọc nhầm model và metrics từ hai run khác nhau.
+
+Thêm `--no-progress` nếu cần tắt progress bar trong CI/log file.
+
+Output training có ba progress bar riêng và các dòng kết quả cố định:
+
+```text
+TRAIN:     100%|██████████| 5/5 [00:31<00:00, 6.20s/model]
+[TRAIN 1/5] Mưa lớn (y_mua_lon) | time=6.42s | support=...
+
+CALIBRATE: 100%|██████████| 5/5 [00:04<00:00, 1.18model/s]
+[CALIBRATE 1/5] Mưa lớn (...) | time=0.91s | threshold=0.35 | calibrated=True
+
+VALIDATE:  100%|██████████| 5/5 [00:07<00:00, 1.44s/model]
+[VALIDATE 1/5] Mưa lớn (...) | time=1.41s | support=... |
+prevalence=... | PR-AUC=... | PR-lift=... | ROC-AUC=... | Brier=... |
+precision=... | recall=... | F1=... | threshold=... | calibrated=True
+```
+
+Nếu terminal không hỗ trợ Unicode, tên tiếng Việt tự chuyển sang dạng ASCII để
+progress không bị lỗi encoding.
 
 Mặc định training sẽ dừng nếu bất kỳ nhãn nào không đủ hai class để calibration,
 thay vì ghi raw score dưới tên xác suất. Với thử nghiệm kỹ thuật trên data nhỏ có
@@ -135,6 +188,38 @@ python -m unittest discover -s tests -v
 
 Test bao phủ contract Open-Meteo → model, artifact train/reload, và output
 inference 5 nhãn.
+
+## Đánh giá model trên labeled holdout
+
+Unit test kiểm tra pipeline có hoạt động đúng, nhưng không chứng minh model dự
+báo tốt. Để chấm model, dùng một file labeled holdout độc lập, không được dùng
+trong train/calibration/validation:
+
+```powershell
+python -m pipeline.evaluation.evaluate `
+  --model artifacts/disaster_model.joblib `
+  --data "C:\path\weather_holdout_labeled.csv" `
+  --output artifacts/evaluation.json
+```
+
+Evaluator báo metric riêng cho từng thiên tai và summary toàn model:
+
+- **PR-AUC / Average Precision — metric chọn best:** càng cao càng tốt. Với sự
+  kiện hiếm, cần so với `prevalence`; ví dụ prevalence 0,1% thì random baseline
+  chỉ khoảng 0,001. Không có một ngưỡng “tốt” áp dụng cho mọi bài toán.
+- **Recall:** tỷ lệ thiên tai thật được phát hiện; quan trọng khi bỏ sót gây hậu
+  quả lớn.
+- **Precision:** trong các cảnh báo đã phát, bao nhiêu cảnh báo là đúng; thấp sẽ
+  gây quá nhiều cảnh báo giả.
+- **F1:** cân bằng precision và recall tại threshold đã chọn.
+- **Brier score:** đánh giá xác suất; càng gần 0 càng tốt. Nên so với baseline
+  luôn dự báo bằng prevalence.
+- **ROC-AUC:** dùng tham khảo, nhưng có thể trông quá tốt trên dữ liệu cực mất
+  cân bằng nên không dùng làm tiêu chí chọn best.
+
+`artifacts/metrics.json` là kết quả validation dùng để chọn model trong quá
+trình phát triển. `artifacts/evaluation.json` mới là kết quả đánh giá cuối nếu
+file đầu vào thực sự là holdout chưa từng được model nhìn thấy.
 
 ## Giới hạn vận hành
 

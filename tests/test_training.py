@@ -1,17 +1,23 @@
-import tempfile
-import unittest
-from pathlib import Path
+import json
+import os
 import subprocess
 import sys
+import tempfile
+import unittest
+from contextlib import redirect_stdout
+from io import StringIO
+from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
 
 from pipeline.shared.meteo_feature_mapping import MODEL_FEATURE_COLUMNS
+from pipeline.inference.predict import load_model
 from pipeline.training.train import (
     TARGET_COLUMNS,
     prepare_training_data,
+    save_training_artifacts,
     train_disaster_models,
 )
 
@@ -49,12 +55,110 @@ def synthetic_training_data(rows: int = 72) -> pd.DataFrame:
 
 
 class TrainingPipelineTest(unittest.TestCase):
+    def test_same_data_and_protocol_have_stable_experiment_key(self):
+        data = synthetic_training_data()
+        _, first = train_disaster_models(
+            data,
+            max_iterations=1,
+            require_calibration=False,
+            show_progress=False,
+        )
+        _, second = train_disaster_models(
+            data,
+            max_iterations=1,
+            require_calibration=False,
+            show_progress=False,
+        )
+
+        self.assertEqual(
+            first["selection"]["experiment_key"],
+            second["selection"]["experiment_key"],
+        )
+
+    def test_progress_output_has_separate_phases_and_complete_metrics(self):
+        output = StringIO()
+
+        with redirect_stdout(output):
+            train_disaster_models(
+                synthetic_training_data(120),
+                forecast_horizon_hours=3,
+                max_iterations=1,
+                require_calibration=False,
+                show_progress=True,
+            )
+
+        text = output.getvalue()
+        self.assertIn("TRAIN:", text)
+        self.assertIn("CALIBRATE:", text)
+        self.assertIn("VALIDATE:", text)
+        for field in [
+            "PR-AUC=",
+            "PR-lift=",
+            "ROC-AUC=",
+            "Brier=",
+            "precision=",
+            "recall=",
+            "F1=",
+            "threshold=",
+        ]:
+            self.assertIn(field, text)
+
+    def test_only_better_validation_run_is_promoted_as_best_model(self):
+        data = synthetic_training_data()
+        bundle, report = train_disaster_models(
+            data,
+            validation_fraction=0.25,
+            max_iterations=5,
+            require_calibration=False,
+            show_progress=False,
+        )
+        report["selection"]["score"] = 0.70
+        report["selection"]["eligible_for_promotion"] = True
+
+        with tempfile.TemporaryDirectory() as directory:
+            first = save_training_artifacts(bundle, report, directory)
+            worse_report = {**report, "created_at": "2026-01-02T00:00:00+00:00"}
+            worse_report["selection"] = {**report["selection"], "score": 0.60}
+            second = save_training_artifacts(bundle, worse_report, directory)
+
+            best_metrics = json.loads(
+                (Path(directory) / "metrics.json").read_text(encoding="utf-8")
+            )
+            other_protocol_report = {
+                **report,
+                "created_at": "2026-01-03T00:00:00+00:00",
+                "selection": {
+                    **report["selection"],
+                    "score": 0.10,
+                    "experiment_key": "different-protocol",
+                },
+            }
+            third = save_training_artifacts(
+                bundle, other_protocol_report, directory
+            )
+            third_metrics = json.loads(
+                third.run_metrics_path.read_text(encoding="utf-8")
+            )
+            restored_best = load_model(Path(directory) / "disaster_model.joblib")
+
+        self.assertTrue(first.promoted_to_best)
+        self.assertFalse(second.promoted_to_best)
+        self.assertEqual(best_metrics["selection"]["score"], 0.70)
+        self.assertNotEqual(first.run_directory, second.run_directory)
+        self.assertTrue(third.promoted_to_best)
+        self.assertIsNone(third_metrics["artifact"]["previous_best_score"])
+        self.assertNotEqual(
+            first.experiment_directory, third.experiment_directory
+        )
+        self.assertEqual(restored_best.created_at, bundle.created_at)
+
     def test_training_refuses_to_label_uncalibrated_scores_as_probabilities(self):
         with self.assertRaisesRegex(ValueError, "Cannot calibrate"):
             train_disaster_models(
                 synthetic_training_data(),
                 validation_fraction=0.25,
                 max_iterations=5,
+                show_progress=False,
             )
 
     def test_training_target_is_shifted_to_the_future_forecast_horizon(self):
@@ -91,6 +195,10 @@ class TrainingPipelineTest(unittest.TestCase):
                 check=True,
                 capture_output=True,
                 text=True,
+                env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+            )
+            run_model_path = next(
+                (output_dir / "runs").glob("*/disaster_model.joblib")
             )
 
             result = subprocess.run(
@@ -99,7 +207,7 @@ class TrainingPipelineTest(unittest.TestCase):
                     "-c",
                     (
                         "from pipeline.inference.predict import load_model; "
-                        f"print(len(load_model(r'{output_dir / 'disaster_model.joblib'}').target_columns))"
+                        f"print(len(load_model(r'{run_model_path}').target_columns))"
                     ),
                 ],
                 check=True,
@@ -130,6 +238,7 @@ class TrainingPipelineTest(unittest.TestCase):
             max_iterations=20,
             random_state=7,
             require_calibration=False,
+            show_progress=False,
         )
 
         probabilities = bundle.predict_proba(data.iloc[-3:][MODEL_FEATURE_COLUMNS])
