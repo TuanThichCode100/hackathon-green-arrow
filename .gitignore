@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.cache/
+.pytest_cache/
+artifacts/
+data/meteo_model_input.csv
+predictions.json
