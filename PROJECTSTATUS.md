@@ -14,6 +14,7 @@ Tiếp tục triển khai Vector RAG (pgvector) trên Supabase Cloud và ghép f
 - Đã thiết kế kiến trúc Backend 9 Modules (Modular Monolith) với FastAPI.
 - Đã Brainstorm thiết kế cấu trúc Database lõi PostgreSQL + PostGIS và Vector RAG (pgvector).
 - Đã triển khai hoàn thiện Backend Module AI Agent tích hợp Gemini 1.5 Flash (Sinh bản tin khẩn cấp từ Open-Meteo và RAG Document) với luồng Human-in-the-loop (Cán bộ duyệt) an toàn tuyệt đối.
+- Đã tích hợp thành công nhánh `build_model` chứa Pipeline Dự báo Thiên tai Khí tượng (Training, Preprocessing, Inference, Test và Evaluation) từ mô hình ML (HistGradientBoostingClassifier) vào `main`.
 
 4. **Đang làm gì?**
 - Tích hợp kết nối Frontend gọi trực tiếp API sinh bản tin (Draft) từ Agent Module.
