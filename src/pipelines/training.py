@@ -25,8 +25,8 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import average_precision_score, brier_score_loss, precision_recall_curve, roc_auc_score
 from xgboost import XGBClassifier
 
-from feature_engineering import FEATURE_ROUTING
-from map_meteo_features import TRAINING_LABEL_COLUMNS
+from pipelines.feature_engineering import FEATURE_ROUTING
+from pipelines.map_meteo_features import TRAINING_LABEL_COLUMNS
 
 DEFAULT_FEATURES_PATH = Path(__file__).resolve().parents[2] / "data" / "weather_features_engineered.csv"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "models"

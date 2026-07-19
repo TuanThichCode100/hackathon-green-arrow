@@ -33,10 +33,10 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from feature_engineering import engineer_features
-from map_meteo_features import map_meteo_to_inference_schema
-from preprocess import fetch_meteo_data, load_location_mapping
-from training import DEFAULT_OUTPUT_DIR, HORIZONS
+from pipelines.feature_engineering import engineer_features
+from pipelines.map_meteo_features import map_meteo_to_inference_schema
+from pipelines.preprocess import fetch_meteo_data, load_location_mapping
+from pipelines.training import DEFAULT_OUTPUT_DIR, HORIZONS
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 DEFAULT_SERVING_DIR = DATA_DIR / "serving"

@@ -1,0 +1,34 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+
+# Caches (recreated at runtime)
+.cache/
+.cache*
+**/.cache/
+**/.cache.sqlite
+*.sqlite
+
+# Training / dev data (not needed for inference)
+data/weather_features_engineered.csv
+data/weather_merged_2021_2026_labeled.csv
+data/hourly_weather_meteo_data.csv
+data/serving_log.jsonl
+data/feature_units.csv
+data/serving/
+
+# Notebooks, docs, tests
+notebook/
+docs/
+tests/
+*.ipynb
+
+# Local env / git
+.git/
+.venv/
+.env
+*.log
