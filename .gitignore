@@ -2,6 +2,10 @@ __pycache__/
 *.py[cod]
 .cache/
 .pytest_cache/
-artifacts/
+artifacts/*
+!artifacts/disaster_model.joblib
 data/meteo_model_input.csv
 predictions.json
+*.csv
+*.parquet
+weather_data/

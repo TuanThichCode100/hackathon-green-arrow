@@ -82,12 +82,14 @@ def run_open_meteo_inference(
     longitude: float,
     *,
     forecast_days: int = 7,
+    history_hours: int = 168,
     timezone: str = "Asia/Bangkok",
 ) -> list[dict[str, Any]]:
     model_input = fetch_open_meteo_forecast(
         latitude,
         longitude,
         forecast_days=forecast_days,
+        history_hours=history_hours,
         timezone=timezone,
     )
     return predict_hazards(model, model_input)
@@ -118,6 +120,7 @@ def main() -> None:
     parser.add_argument("--latitude", type=float)
     parser.add_argument("--longitude", type=float)
     parser.add_argument("--forecast-days", type=int, default=7)
+    parser.add_argument("--history-hours", type=int, default=168)
     parser.add_argument("--timezone", default="Asia/Bangkok")
     parser.add_argument("--output", type=Path, default=Path("predictions.json"))
     args = parser.parse_args()
@@ -133,6 +136,7 @@ def main() -> None:
             args.latitude,
             args.longitude,
             forecast_days=args.forecast_days,
+            history_hours=args.history_hours,
             timezone=args.timezone,
         )
     output = write_predictions(predictions, args.output)

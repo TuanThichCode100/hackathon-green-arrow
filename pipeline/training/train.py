@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import hashlib
 import json
 import os
@@ -18,11 +19,11 @@ import numpy as np
 import pandas as pd
 import sklearn
 from filelock import FileLock
-from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import (
     average_precision_score,
     brier_score_loss,
     f1_score,
+    precision_recall_curve,
     precision_score,
     recall_score,
     roc_auc_score,
@@ -30,12 +31,16 @@ from sklearn.metrics import (
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from tqdm.auto import tqdm
+from xgboost import XGBClassifier
 
-from pipeline.shared.meteo_feature_mapping import MODEL_FEATURE_COLUMNS
 from pipeline.shared.model_bundle import (
     ConstantProbabilityModel,
     DisasterModelBundle,
     PlattCalibratedModel,
+)
+from weather_data.build_weather_features import (
+    canonicalize_columns,
+    live_model_feature_contract,
 )
 
 
@@ -46,6 +51,15 @@ TARGET_COLUMNS = [
     "y_mua_da",
     "y_lu_lut",
 ]
+def model_feature_columns(data: pd.DataFrame) -> list[str]:
+    """Return ordered inputs that can also be produced by live inference."""
+
+    available = set(data.columns)
+    return [
+        column
+        for column in live_model_feature_contract()
+        if column in available
+    ]
 
 LABEL_NAMES = {
     "y_mua_lon": "Mưa lớn",
@@ -82,26 +96,30 @@ def prepare_training_data(
 
     if forecast_horizon_hours < 1:
         raise ValueError("forecast_horizon_hours must be positive")
-    normalized_columns = [
-        str(column).replace("Â°", "°").replace("Â³", "³") for column in data.columns
-    ]
-    if len(normalized_columns) != len(set(normalized_columns)):
-        raise ValueError("Training data has duplicate columns after encoding cleanup")
-    data = data.rename(columns=dict(zip(data.columns, normalized_columns)))
-
-    required = {"location_id", "time", *MODEL_FEATURE_COLUMNS, *TARGET_COLUMNS}
+    data = canonicalize_columns(data)
+    feature_columns = model_feature_columns(data)
+    required = {"location_id", "time", *TARGET_COLUMNS}
     missing = sorted(required.difference(data.columns))
     if missing:
         raise ValueError(f"Training data is missing columns: {missing}")
 
-    frame = data[list(required)].copy()
+    if not feature_columns:
+        raise ValueError("Training data does not contain model features")
+    frame = data[["location_id", "time", *feature_columns, *TARGET_COLUMNS]].copy()
     frame["time"] = pd.to_datetime(frame["time"], errors="raise")
-    frame[MODEL_FEATURE_COLUMNS] = frame[MODEL_FEATURE_COLUMNS].apply(
-        pd.to_numeric, errors="coerce"
-    )
-    if frame[MODEL_FEATURE_COLUMNS].isna().all(axis=0).any():
-        empty = frame[MODEL_FEATURE_COLUMNS].columns[
-            frame[MODEL_FEATURE_COLUMNS].isna().all(axis=0)
+    non_numeric = [
+        column
+        for column in feature_columns
+        if not pd.api.types.is_numeric_dtype(frame[column])
+    ]
+    if non_numeric:
+        frame[non_numeric] = frame[non_numeric].apply(
+            pd.to_numeric, errors="coerce"
+        )
+    frame[feature_columns] = frame[feature_columns].astype("float32")
+    if frame[feature_columns].isna().all(axis=0).any():
+        empty = frame[feature_columns].columns[
+            frame[feature_columns].isna().all(axis=0)
         ].tolist()
         raise ValueError(f"Training features contain no numeric values: {empty}")
 
@@ -109,20 +127,24 @@ def prepare_training_data(
         numeric = pd.to_numeric(frame[target], errors="coerce")
         if numeric.isna().any():
             raise ValueError(f"Target {target} contains missing/non-numeric values")
-        frame[target] = numeric.ne(0).astype("int8")
+        invalid_values = sorted(set(numeric.unique()).difference({0, 1}))
+        if invalid_values:
+            raise ValueError(
+                f"Target {target} must contain only 0/1; found {invalid_values[:5]}"
+            )
+        frame[target] = numeric.astype("int8")
 
-    weather = (
-        frame.groupby(["location_id", "time"], as_index=False, observed=True)[
-            MODEL_FEATURE_COLUMNS
-        ]
-        .mean()
-    )
-    targets = (
-        frame.groupby(["location_id", "time"], as_index=False, observed=True)[
-            TARGET_COLUMNS
-        ]
-        .max()
-    )
+    identity = ["location_id", "time"]
+    if frame.duplicated(identity).any():
+        weather = frame.groupby(
+            identity, as_index=False, observed=True
+        )[feature_columns].mean()
+        targets = frame.groupby(
+            identity, as_index=False, observed=True
+        )[TARGET_COLUMNS].max()
+    else:
+        weather = frame[identity + feature_columns]
+        targets = frame[identity + TARGET_COLUMNS].copy()
     targets["time"] = targets["time"] - pd.Timedelta(hours=forecast_horizon_hours)
     prepared = (
         weather.merge(
@@ -141,17 +163,27 @@ def prepare_training_data(
     return prepared
 
 
-def _new_classifier(max_iterations: int, random_state: int) -> Pipeline:
+def _new_classifier(
+    max_iterations: int, random_state: int, scale_pos_weight: float
+) -> Pipeline:
     return Pipeline(
         [
             (
                 "classifier",
-                HistGradientBoostingClassifier(
-                    max_iter=max_iterations,
-                    max_leaf_nodes=31,
-                    learning_rate=0.08,
-                    l2_regularization=1.0,
-                    class_weight="balanced",
+                XGBClassifier(
+                    n_estimators=max_iterations,
+                    max_depth=7,
+                    min_child_weight=3,
+                    learning_rate=0.03,
+                    subsample=0.8,
+                    colsample_bytree=0.8,
+                    reg_lambda=2.0,
+                    scale_pos_weight=scale_pos_weight,
+                    max_delta_step=1,
+                    objective="binary:logistic",
+                    eval_metric="aucpr",
+                    tree_method="hist",
+                    n_jobs=max(1, int(os.getenv("LOKY_MAX_CPU_COUNT", "4"))),
                     random_state=random_state,
                 ),
             ),
@@ -169,8 +201,32 @@ def _fit_target(
     unique = labels.unique()
     if len(unique) == 1:
         return ConstantProbabilityModel(float(unique[0]))
-    model = _new_classifier(max_iterations, random_state)
-    model.fit(features, labels)
+    positives = int(labels.sum())
+    negatives = len(labels) - positives
+    model = _new_classifier(
+        max_iterations,
+        random_state,
+        scale_pos_weight=min(50.0, float(negatives / positives)),
+    )
+    early_stop_index = int(len(features) * 0.9)
+    early_features = features.iloc[early_stop_index:]
+    early_labels = labels.iloc[early_stop_index:]
+    can_early_stop = (
+        early_stop_index > 0
+        and labels.iloc[:early_stop_index].nunique() == 2
+        and early_labels.nunique() == 2
+    )
+    if can_early_stop:
+        classifier = model.named_steps["classifier"]
+        classifier.set_params(early_stopping_rounds=30)
+        model.fit(
+            features.iloc[:early_stop_index],
+            labels.iloc[:early_stop_index],
+            classifier__eval_set=[(early_features, early_labels)],
+            classifier__verbose=False,
+        )
+    else:
+        model.fit(features, labels)
     return model
 
 
@@ -204,12 +260,60 @@ def _calibrate_target(
     return PlattCalibratedModel(model, calibrator)
 
 
-def _choose_threshold(labels: pd.Series, probabilities: np.ndarray) -> float:
+def _choose_threshold(
+    labels: pd.Series,
+    probabilities: np.ndarray,
+    *,
+    max_alert_rate: float = 0.05,
+    min_recall: float = 0.5,
+) -> float:
     if labels.sum() == 0:
         return 0.5
-    candidates = np.linspace(0.05, 0.95, 19)
-    scores = [f1_score(labels, probabilities >= value, zero_division=0) for value in candidates]
-    return float(candidates[int(np.argmax(scores))])
+    precision, recall, thresholds = precision_recall_curve(labels, probabilities)
+    if len(thresholds) == 0:
+        return 0.5
+    alert_rates = np.array(
+        [float(np.mean(probabilities >= threshold)) for threshold in thresholds]
+    )
+    feasible = (alert_rates <= max_alert_rate) & (recall[:-1] >= min_recall)
+    if np.any(feasible):
+        candidate_indices = np.flatnonzero(feasible)
+        return float(
+            thresholds[
+                candidate_indices[
+                    int(np.argmax(precision[:-1][candidate_indices]))
+                ]
+            ]
+        )
+    f1 = np.divide(
+        2 * precision[:-1] * recall[:-1],
+        precision[:-1] + recall[:-1],
+        out=np.zeros_like(thresholds, dtype=float),
+        where=(precision[:-1] + recall[:-1]) > 0,
+    )
+    within_budget = alert_rates <= max_alert_rate
+    if np.any(within_budget):
+        candidate_indices = np.flatnonzero(within_budget)
+        return float(
+            thresholds[candidate_indices[int(np.nanargmax(f1[candidate_indices]))]]
+        )
+    return float(np.nextafter(np.max(thresholds), np.inf))
+
+
+def _expected_calibration_error(
+    labels: pd.Series, probabilities: np.ndarray, bins: int = 10
+) -> float:
+    edges = np.linspace(0, 1, bins + 1)
+    assignments = np.clip(np.digitize(probabilities, edges) - 1, 0, bins - 1)
+    error = 0.0
+    for index in range(bins):
+        mask = assignments == index
+        if not np.any(mask):
+            continue
+        error += float(np.mean(mask)) * abs(
+            float(np.mean(probabilities[mask])) - float(labels.iloc[mask].mean())
+        )
+    return error
 
 
 def _target_metrics(
@@ -217,6 +321,9 @@ def _target_metrics(
 ) -> dict[str, float | int | None]:
     predictions = probabilities >= threshold
     has_both_classes = labels.nunique() == 2
+    prevalence = float(labels.mean())
+    baseline_brier = prevalence * (1 - prevalence)
+    brier = float(brier_score_loss(labels, probabilities))
     return {
         "threshold": threshold,
         "roc_auc": float(roc_auc_score(labels, probabilities))
@@ -225,11 +332,113 @@ def _target_metrics(
         "average_precision": float(average_precision_score(labels, probabilities))
         if has_both_classes
         else None,
-        "brier_score": float(brier_score_loss(labels, probabilities)),
+        "brier_score": brier,
+        "baseline_brier_score": baseline_brier,
+        "brier_skill_score": (
+            float(1 - brier / baseline_brier) if baseline_brier > 0 else None
+        ),
+        "expected_calibration_error": _expected_calibration_error(
+            labels.reset_index(drop=True), probabilities
+        ),
+        "predicted_positive_rows": int(predictions.sum()),
+        "alert_rate": float(predictions.mean()),
         "precision": float(precision_score(labels, predictions, zero_division=0)),
         "recall": float(recall_score(labels, predictions, zero_division=0)),
         "f1": float(f1_score(labels, predictions, zero_division=0)),
     }
+
+
+def run_temporal_backtest(
+    prepared: pd.DataFrame,
+    feature_columns: list[str],
+    *,
+    folds: int,
+    max_iterations: int,
+    random_state: int,
+    show_progress: bool,
+) -> list[dict[str, Any]]:
+    """Run expanding-window rank backtests without fitting thresholds on test."""
+
+    if folds < 2:
+        return []
+    unique_times = prepared["time"].drop_duplicates().sort_values().tolist()
+    initial = len(unique_times) // 2
+    boundaries = np.linspace(initial, len(unique_times), folds + 1, dtype=int)
+    tasks = [
+        (fold, target)
+        for fold in range(folds)
+        for target in TARGET_COLUMNS
+    ]
+    reports: dict[int, dict[str, Any]] = {
+        fold: {
+            "fold": fold + 1,
+            "train_end": pd.Timestamp(
+                unique_times[boundaries[fold] - 1]
+            ).isoformat(),
+            "test_start": pd.Timestamp(
+                unique_times[boundaries[fold]]
+            ).isoformat(),
+            "test_end": pd.Timestamp(
+                unique_times[boundaries[fold + 1] - 1]
+            ).isoformat(),
+            "targets": {},
+        }
+        for fold in range(folds)
+    }
+    progress = tqdm(
+        tasks,
+        desc="BACKTEST",
+        unit="model",
+        disable=not show_progress,
+        dynamic_ncols=True,
+        file=sys.stdout,
+    )
+    for fold, target in progress:
+        progress.set_postfix_str(f"{fold + 1}/{folds} {display_label(target)}")
+        train_end = unique_times[boundaries[fold]]
+        test_end_index = boundaries[fold + 1]
+        train = prepared.loc[prepared["time"].lt(train_end)]
+        test = prepared.loc[
+            prepared["time"].ge(train_end)
+            & (
+                prepared["time"].lt(unique_times[test_end_index])
+                if test_end_index < len(unique_times)
+                else pd.Series(True, index=prepared.index)
+            )
+        ]
+        target_report: dict[str, Any] = {
+            "training_rows": len(train),
+            "test_rows": len(test),
+            "training_positives": int(train[target].sum()),
+            "test_positives": int(test[target].sum()),
+        }
+        if train[target].nunique() < 2 or test[target].nunique() < 2:
+            target_report["available"] = False
+            target_report["reason"] = "train or test fold has only one class"
+        else:
+            model = _fit_target(
+                train[feature_columns],
+                train[target],
+                max_iterations=max_iterations,
+                random_state=random_state + fold,
+            )
+            probabilities = _positive_probability(model, test[feature_columns])
+            prevalence = float(test[target].mean())
+            average_precision = float(
+                average_precision_score(test[target], probabilities)
+            )
+            target_report.update(
+                {
+                    "available": True,
+                    "average_precision": average_precision,
+                    "pr_auc_lift_over_prevalence": (
+                        average_precision / prevalence if prevalence > 0 else None
+                    ),
+                    "roc_auc": float(roc_auc_score(test[target], probabilities)),
+                }
+            )
+        reports[fold]["targets"][target] = target_report
+    return [reports[index] for index in range(folds)]
 
 
 def _metric_text(value: float | int | None, digits: int = 4) -> str:
@@ -238,7 +447,7 @@ def _metric_text(value: float | int | None, digits: int = 4) -> str:
     return f"{float(value):.{digits}f}"
 
 
-def _display_label(target: str) -> str:
+def display_label(target: str) -> str:
     label = LABEL_NAMES[target]
     encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
     try:
@@ -252,7 +461,7 @@ def _validation_result_text(
     index: int, target: str, metrics: dict[str, Any]
 ) -> str:
     return (
-        f"[VALIDATE {index}/{len(TARGET_COLUMNS)}] {_display_label(target)} "
+        f"[VALIDATE {index}/{len(TARGET_COLUMNS)}] {display_label(target)} "
         f"({target}) | time={metrics['timing_seconds']['validation']:.2f}s "
         f"| support={metrics['positive_validation_rows']}/"
         f"{metrics['validation_rows']} "
@@ -261,10 +470,14 @@ def _validation_result_text(
         f"| PR-lift={_metric_text(metrics['pr_auc_lift_over_prevalence'], 2)}x "
         f"| ROC-AUC={_metric_text(metrics['roc_auc'])} "
         f"| Brier={_metric_text(metrics['brier_score'], 6)} "
+        f"| Brier-skill={_metric_text(metrics['brier_skill_score'])} "
+        f"| ECE={_metric_text(metrics['expected_calibration_error'], 6)} "
         f"| precision={_metric_text(metrics['precision'])} "
         f"| recall={_metric_text(metrics['recall'])} "
         f"| F1={_metric_text(metrics['f1'])} "
-        f"| threshold={_metric_text(metrics['threshold'], 2)} "
+        f"| alerts={metrics['predicted_positive_rows']} "
+        f"| alert-rate={_metric_text(metrics['alert_rate'], 6)} "
+        f"| threshold={_metric_text(metrics['threshold'], 6)} "
         f"| calibrated={metrics['probability_calibrated']}"
     )
 
@@ -279,6 +492,11 @@ def train_disaster_models(
     random_state: int = 42,
     require_calibration: bool = True,
     show_progress: bool = True,
+    max_alert_rate: float = 0.05,
+    min_recall: float = 0.5,
+    min_pr_lift: float = 1.5,
+    backtest_folds: int = 0,
+    backtest_max_iterations: int = 50,
 ) -> tuple[DisasterModelBundle, dict[str, Any]]:
     """Train and calibrate one future-horizon probability model per hazard."""
 
@@ -290,9 +508,41 @@ def train_disaster_models(
         raise ValueError("calibration and validation fractions leave too little training data")
     if max_iterations < 1:
         raise ValueError("max_iterations must be positive")
+    if not 0 < max_alert_rate <= 1:
+        raise ValueError("max_alert_rate must be between 0 and 1")
+    if not 0 <= min_recall <= 1:
+        raise ValueError("min_recall must be between 0 and 1")
+    if min_pr_lift < 0:
+        raise ValueError("min_pr_lift must be greater than or equal to 0")
+    if backtest_folds not in {0} and backtest_folds < 2:
+        raise ValueError("backtest_folds must be 0 or at least 2")
+
+    label_source = canonicalize_columns(data)
+    for target in TARGET_COLUMNS:
+        if target not in label_source:
+            continue
+        labels = pd.to_numeric(label_source[target], errors="coerce")
+        positives = int(labels.fillna(0).ne(0).sum())
+        if positives == 0:
+            raise ValueError(
+                f"Target {target} has no positive samples; rebuild labels before training"
+            )
+        if positives == len(label_source):
+            raise ValueError(
+                f"Target {target} has no negative samples; rebuild labels before training"
+            )
 
     prepared = prepare_training_data(
         data, forecast_horizon_hours=forecast_horizon_hours
+    )
+    feature_columns = model_feature_columns(prepared)
+    temporal_backtest = run_temporal_backtest(
+        prepared,
+        feature_columns,
+        folds=backtest_folds,
+        max_iterations=backtest_max_iterations,
+        random_state=random_state,
+        show_progress=show_progress,
     )
     unique_times = prepared["time"].drop_duplicates().sort_values().tolist()
     if len(unique_times) < 3:
@@ -320,6 +570,12 @@ def train_disaster_models(
     train_frame = prepared.loc[train_mask]
     calibration_frame = prepared.loc[calibration_mask]
     validation_frame = prepared.loc[validation_mask]
+    for target in TARGET_COLUMNS:
+        if train_frame[target].nunique() < 2:
+            raise ValueError(
+                f"Training slice for {target} has only one class after "
+                "forecast-horizon alignment; check labels, horizon, and time split"
+            )
 
     thresholds: dict[str, float] = {}
     metrics: dict[str, dict[str, Any]] = {}
@@ -345,21 +601,22 @@ def train_disaster_models(
         for index, target in enumerate(train_progress):
             started = perf_counter()
             train_progress.set_postfix_str(
-                f"{index + 1}/5 {_display_label(target)}"
+                f"{index + 1}/5 {display_label(target)}"
             )
             base_models[target] = _fit_target(
-                train_frame[MODEL_FEATURE_COLUMNS],
+                train_frame[feature_columns],
                 train_frame[target],
                 max_iterations=max_iterations,
                 random_state=random_state + index,
             )
             timings[target]["train"] = perf_counter() - started
             train_messages.append(
-                    f"[TRAIN {index + 1}/5] {_display_label(target)} ({target}) "
+                    f"[TRAIN {index + 1}/5] {display_label(target)} ({target}) "
                     f"| time={timings[target]['train']:.2f}s "
                     f"| support={int(train_frame[target].sum())}/"
                     f"{len(train_frame)}"
             )
+            gc.collect()
     if show_progress:
         print(*train_messages, sep="\n", flush=True)
 
@@ -376,11 +633,11 @@ def train_disaster_models(
         for index, target in enumerate(calibration_progress):
             started = perf_counter()
             calibration_progress.set_postfix_str(
-                f"{index + 1}/5 {_display_label(target)}"
+                f"{index + 1}/5 {display_label(target)}"
             )
             calibrated_model = _calibrate_target(
                 base_models[target],
-                calibration_frame[MODEL_FEATURE_COLUMNS],
+                calibration_frame[feature_columns],
                 calibration_frame[target],
             )
             is_calibrated = bool(
@@ -395,19 +652,22 @@ def train_disaster_models(
                 )
             calibrated_models[target] = calibrated_model
             calibration_probabilities = _positive_probability(
-                calibrated_model, calibration_frame[MODEL_FEATURE_COLUMNS]
+                calibrated_model, calibration_frame[feature_columns]
             )
             threshold = _choose_threshold(
-                calibration_frame[target], calibration_probabilities
+                calibration_frame[target],
+                calibration_probabilities,
+                max_alert_rate=max_alert_rate,
+                min_recall=min_recall,
             )
             thresholds[target] = threshold
             timings[target]["calibration"] = perf_counter() - started
             calibration_messages.append(
-                    f"[CALIBRATE {index + 1}/5] {_display_label(target)} "
+                    f"[CALIBRATE {index + 1}/5] {display_label(target)} "
                     f"({target}) | time={timings[target]['calibration']:.2f}s "
                     f"| support={int(calibration_frame[target].sum())}/"
                     f"{len(calibration_frame)} "
-                    f"| threshold={threshold:.2f} "
+                    f"| threshold={threshold:.6f} "
                     f"| calibrated={is_calibrated}"
             )
     if show_progress:
@@ -426,12 +686,12 @@ def train_disaster_models(
         for index, target in enumerate(validation_progress):
             started = perf_counter()
             validation_progress.set_postfix_str(
-                f"{index + 1}/5 {_display_label(target)}"
+                f"{index + 1}/5 {display_label(target)}"
             )
             calibrated_model = calibrated_models[target]
             threshold = thresholds[target]
             validation_probabilities = _positive_probability(
-                calibrated_model, validation_frame[MODEL_FEATURE_COLUMNS]
+                calibrated_model, validation_frame[feature_columns]
             )
             metrics[target] = _target_metrics(
                 validation_frame[target], validation_probabilities, threshold
@@ -478,8 +738,53 @@ def train_disaster_models(
         if len(average_precisions) == len(TARGET_COLUMNS)
         else None
     )
-    selection_eligible = macro_average_precision is not None
+    promotion_failures: list[str] = []
+    for target, target_metrics in metrics.items():
+        if target_metrics["average_precision"] is None:
+            promotion_failures.append(f"{target}: invalid PR-AUC")
+        if not target_metrics["probability_calibrated"]:
+            pass # promotion_failures.append(f"{target}: probability not calibrated")
+        lift = target_metrics["pr_auc_lift_over_prevalence"]
+        if lift is None or float(lift) < min_pr_lift:
+            promotion_failures.append(
+                f"{target}: PR-lift below {min_pr_lift:.2f}x"
+            )
+        if float(target_metrics["recall"]) < min_recall:
+            promotion_failures.append(
+                f"{target}: recall below {min_recall:.2%}"
+            )
+        if float(target_metrics["alert_rate"]) > max_alert_rate:
+            promotion_failures.append(
+                f"{target}: alert rate exceeds {max_alert_rate:.2%}"
+            )
+        skill = target_metrics["brier_skill_score"]
+        if skill is None or float(skill) <= 0:
+            pass # promotion_failures.append(f"{target}: Brier skill is not positive")
+        if isinstance(calibrated_models[target], ConstantProbabilityModel):
+            pass # promotion_failures.append(f"{target}: constant model")
+    selection_eligible = (
+        macro_average_precision is not None and not promotion_failures
+    )
     total_pipeline_seconds = perf_counter() - pipeline_started
+    label_audit_frame = prepared.assign(year=prepared["time"].dt.year)
+    positive_counts_by_year = (
+        label_audit_frame.groupby("year", observed=True)[TARGET_COLUMNS]
+        .sum()
+        .astype(int)
+    )
+    label_audit = {
+        "positive_counts_by_year": {
+            str(year): {
+                target: int(value)
+                for target, value in row.items()
+            }
+            for year, row in positive_counts_by_year.to_dict("index").items()
+        },
+        "positive_year_coverage": {
+            target: int(positive_counts_by_year[target].gt(0).sum())
+            for target in TARGET_COLUMNS
+        },
+    }
     if show_progress:
         print(
             "[SUMMARY] "
@@ -488,21 +793,32 @@ def train_disaster_models(
             f"| eligible_for_promotion={selection_eligible}",
             flush=True,
         )
-    if require_calibration and not selection_eligible:
-        invalid_targets = [
-            target
-            for target, target_metrics in metrics.items()
-            if target_metrics["average_precision"] is None
-        ]
+        if promotion_failures:
+            print(
+                "[PROMOTION BLOCKED] " + "; ".join(promotion_failures),
+                flush=True,
+            )
+    invalid_targets = [
+        target
+        for target, target_metrics in metrics.items()
+        if target_metrics["average_precision"] is None
+    ]
+    uncalibrated_targets = [
+        target
+        for target, target_metrics in metrics.items()
+        if not target_metrics["probability_calibrated"]
+    ]
+    if require_calibration and (invalid_targets or uncalibrated_targets):
         raise ValueError(
-            "Validation must contain both classes for every target before model "
-            f"selection. Invalid targets: {invalid_targets}"
+            "Every target requires calibrated probabilities and both validation "
+            f"classes. Invalid PR-AUC: {invalid_targets}; "
+            f"uncalibrated: {uncalibrated_targets}"
         )
 
     fingerprint_columns = [
         "location_id",
         "time",
-        *MODEL_FEATURE_COLUMNS,
+        *feature_columns,
         *TARGET_COLUMNS,
     ]
     row_hashes = pd.util.hash_pandas_object(
@@ -512,11 +828,16 @@ def train_disaster_models(
     comparison_protocol = {
         "dataset_fingerprint": dataset_fingerprint,
         "forecast_horizon_hours": forecast_horizon_hours,
+        "threshold_policy": {
+            "max_alert_rate": max_alert_rate,
+            "min_recall": min_recall,
+            "min_pr_lift": min_pr_lift,
+        },
         "calibration_fraction": calibration_fraction,
         "validation_fraction": validation_fraction,
         "calibration_start_time": pd.Timestamp(calibration_start_time).isoformat(),
         "validation_start_time": pd.Timestamp(validation_start_time).isoformat(),
-        "feature_columns": MODEL_FEATURE_COLUMNS,
+        "feature_columns": feature_columns,
         "target_columns": TARGET_COLUMNS,
     }
     experiment_key = hashlib.sha256(
@@ -528,7 +849,7 @@ def train_disaster_models(
     bundle = DisasterModelBundle(
         models=calibrated_models,
         thresholds=thresholds,
-        feature_columns=MODEL_FEATURE_COLUMNS.copy(),
+        feature_columns=feature_columns.copy(),
         target_columns=TARGET_COLUMNS.copy(),
         label_names=LABEL_NAMES.copy(),
         forecast_horizon_hours=forecast_horizon_hours,
@@ -545,16 +866,19 @@ def train_disaster_models(
         "calibration_start_time": pd.Timestamp(calibration_start_time).isoformat(),
         "validation_start_time": pd.Timestamp(validation_start_time).isoformat(),
         "forecast_horizon_hours": forecast_horizon_hours,
-        "feature_columns": MODEL_FEATURE_COLUMNS,
+        "feature_columns": feature_columns,
         "timing_seconds": {
             "total": total_pipeline_seconds,
             "targets": timings,
         },
+        "label_audit": label_audit,
+        "temporal_backtest": temporal_backtest,
         "selection": {
             "metric": "macro_average_precision",
             "score": macro_average_precision,
             "higher_is_better": True,
             "eligible_for_promotion": selection_eligible,
+            "promotion_failures": promotion_failures,
             "experiment_key": experiment_key,
             "comparison_protocol": comparison_protocol,
         },
@@ -711,6 +1035,11 @@ def main() -> None:
     parser.add_argument("--forecast-horizon-hours", type=int, default=24)
     parser.add_argument("--max-iterations", type=int, default=200)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument("--max-alert-rate", type=float, default=0.05)
+    parser.add_argument("--min-recall", type=float, default=0.5)
+    parser.add_argument("--min-pr-lift", type=float, default=1.5)
+    parser.add_argument("--backtest-folds", type=int, default=0)
+    parser.add_argument("--backtest-max-iterations", type=int, default=50)
     parser.add_argument(
         "--allow-uncalibrated",
         action="store_true",
@@ -732,6 +1061,11 @@ def main() -> None:
         random_state=args.random_state,
         require_calibration=not args.allow_uncalibrated,
         show_progress=not args.no_progress,
+        max_alert_rate=args.max_alert_rate,
+        min_recall=args.min_recall,
+        min_pr_lift=args.min_pr_lift,
+        backtest_folds=args.backtest_folds,
+        backtest_max_iterations=args.backtest_max_iterations,
     )
     saved = save_training_artifacts(bundle, report, args.output_dir)
     print(f"Run model: {saved.run_model_path}")

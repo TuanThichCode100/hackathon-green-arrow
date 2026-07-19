@@ -20,10 +20,12 @@ from sklearn.metrics import (
 )
 
 from pipeline.inference.predict import load_model
+from pipeline.preprocessing.open_meteo import LEGACY_FEATURE_ALIASES
 from pipeline.shared.model_bundle import DisasterModelBundle
 from pipeline.training.train import (
     LABEL_NAMES,
     TARGET_COLUMNS,
+    display_label,
     prepare_training_data,
     read_training_data,
 )
@@ -37,6 +39,9 @@ def evaluate_model(
     prepared = prepare_training_data(
         labeled_data, forecast_horizon_hours=model.forecast_horizon_hours
     )
+    for canonical, legacy in LEGACY_FEATURE_ALIASES.items():
+        if legacy in model.feature_columns and canonical in prepared:
+            prepared[legacy] = prepared[canonical]
     probabilities = model.predict_proba(prepared)
     target_reports: dict[str, dict[str, Any]] = {}
     for target in TARGET_COLUMNS:
@@ -99,7 +104,7 @@ def _print_summary(report: dict[str, Any]) -> None:
         rows.append(
             {
                 "target": target,
-                "name": metrics["name"],
+                "name": display_label(target),
                 "prevalence": metrics["prevalence"],
                 "PR-AUC": metrics["average_precision"],
                 "ROC-AUC": metrics["roc_auc"],

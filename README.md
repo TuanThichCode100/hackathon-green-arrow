@@ -1,5 +1,25 @@
 # Green Arrow — Natural Disaster Forecasting Pipeline
 
+## Feature dataset mới
+
+Training mặc định dùng contract động trong:
+
+```text
+weather_data/weather_merged_2021_2026_labeled_features.parquet
+```
+
+Chạy bằng một lệnh:
+
+```bat
+train_model.bat
+```
+
+Model sử dụng 136 feature thuộc allowlist dùng chung giữa Parquet và Open-Meteo;
+các cột ngoài contract này được bỏ qua để tránh train một feature mà inference
+không thể tái tạo. Artifact ghi lại chính xác danh sách feature đã train.
+Inference Open-Meteo tải thêm 168 giờ quá khứ và tái tạo cùng lag/rolling
+feature trước khi dự đoán.
+
 Pipeline dự báo xác suất 5 loại thiên tai từ dữ liệu khí tượng:
 
 - `y_mua_lon` — Mưa lớn
@@ -8,13 +28,12 @@ Pipeline dự báo xác suất 5 loại thiên tai từ dữ liệu khí tượn
 - `y_mua_da` — Mưa đá
 - `y_lu_lut` — Lũ lụt
 
-Ba pipeline dùng chung contract 12 feature đã phân tích trong
-`notebooks/baseline.ipynb`:
+Ba pipeline dùng chung contract 136 feature từ Parquet:
 
 ```text
 CSV/Parquet đã gán nhãn -> training -> disaster_model.joblib
-Open-Meteo API          -> preprocessing -> 12 model features
-12 model features + model artifact       -> 5 xác suất / giờ dự báo
+Open-Meteo API + 168 giờ lịch sử -> preprocessing -> 136 model features
+136 model features + model artifact      -> 5 xác suất / giờ dự báo
 ```
 
 ## Cài đặt
@@ -47,8 +66,12 @@ train_model.bat "C:\path\weather_merged_2021_2026_labeled.csv" artifacts
 ```
 
 Có thể thay đổi cấu hình BAT bằng environment variable:
-`FORECAST_HORIZON_HOURS`, `CALIBRATION_FRACTION`, `VALIDATION_FRACTION` và
-`MAX_ITERATIONS`. Chỉ với smoke test/data nhỏ, có thể đặt
+`FORECAST_HORIZON_HOURS`, `CALIBRATION_FRACTION`, `VALIDATION_FRACTION`,
+`MAX_ITERATIONS`, `MAX_ALERT_RATE`, `MIN_RECALL`, `MIN_PR_LIFT`,
+`BACKTEST_FOLDS` và `BACKTEST_MAX_ITERATIONS`. Đặt `BACKTEST_FOLDS=2` hoặc lớn
+hơn để chạy expanding-window temporal backtest; fold một class được đánh dấu
+`available=false` thay vì trộn dữ liệu gây leakage. Chỉ với smoke test/data nhỏ,
+có thể đặt
 `ALLOW_UNCALIBRATED=1`; không nên dùng cho model production.
 
 Pipeline sẽ:
@@ -60,11 +83,13 @@ Pipeline sẽ:
 3. dịch target tới horizon tương lai (mặc định `t + 24h`);
 4. chia train/calibration/validation theo thời gian để không dùng tương lai dự
    báo quá khứ;
-5. huấn luyện một `HistGradientBoostingClassifier` có cân bằng lớp cho mỗi nhãn;
-6. hiệu chỉnh xác suất bằng Platt scaling trên calibration set, chọn threshold
-   trên calibration set và báo metric trên validation độc lập;
+5. huấn luyện một `XGBClassifier` cho mỗi nhãn với histogram trees,
+   `scale_pos_weight`, subsampling và early stopping;
+6. hiệu chỉnh xác suất bằng Platt scaling, chọn threshold từ precision–recall
+   curve theo recall tối thiểu/ngân sách cảnh báo và báo metric trên validation;
 7. hiển thị `tqdm` cho 15 phase: train, calibrate và validate của 5 nhãn;
-8. lưu mọi lần chạy và chỉ promote model có macro PR-AUC tốt hơn:
+8. lưu mọi lần chạy; chỉ promote khi mọi target calibrated, PR-lift đạt chuẩn,
+   recall dương, alert rate trong ngân sách và Brier skill dương:
 
 ```text
 artifacts/
@@ -221,6 +246,71 @@ Evaluator báo metric riêng cho từng thiên tai và summary toàn model:
 trình phát triển. `artifacts/evaluation.json` mới là kết quả đánh giá cuối nếu
 file đầu vào thực sự là holdout chưa từng được model nhìn thấy.
 
+## 3. Model Microservice (Dự báo Realtime qua Cổng 5050)
+
+Để phục vụ cho Backend Team dễ dàng tích hợp dự báo thiên tai theo thời gian thực, hệ thống cung cấp một Microservice API độc lập, luôn mở tại **Cổng 5050**.
+
+### Kiến trúc & Quy trình hoạt động (Data Flow)
+1. **Lắng nghe Request:** Backend gửi một request (GET hoặc POST) chứa tọa độ địa lý (`lat`, `lon`) tới API.
+2. **Kéo dữ liệu Realtime:** Dựa vào tọa độ đó, Microservice tự động call API của Open-Meteo để kéo về lịch sử thời tiết 168 giờ gần nhất (điều kiện bắt buộc để tính toán các tính năng mảng Lag/Rolling).
+3. **Tiền xử lý (Preprocessing):** Toàn bộ dữ liệu thô được đẩy qua hàm tiền xử lý để tạo ra 146 tính năng (features) khớp chính xác với những gì Model đã được học.
+4. **Suy luận (Inference):** Dữ liệu được đưa vào mô hình AI (`artifacts/disaster_model.joblib`) để dự báo.
+5. **Trả về kết quả:** Trả về định dạng JSON đã được chuẩn hóa (tên thiên tai làm Key và giá trị là xác suất phần trăm) để Backend dễ dàng hiển thị lên UI.
+
+### Hướng dẫn khởi chạy Microservice
+
+**Cách 1: Chạy trực tiếp qua Script (Dành cho Development)**
+Chỉ cần chạy file Batch đã được cung cấp sẵn:
+```bat
+start_server.bat
+```
+Server sẽ tự động lắng nghe tại `http://localhost:5050`. Bạn có thể truy cập `http://localhost:5050/docs` để xem giao diện Swagger UI và test API trực tiếp.
+
+**Cách 2: Chạy qua Docker (Dành cho Deployment/Production)**
+Toàn bộ Microservice đã được đóng gói chuẩn chỉnh bằng Docker để đảm bảo chạy mượt mà trên mọi môi trường (đặc biệt phù hợp khi nộp bài cho Ban giám khảo chấm thi).
+
+Build Image:
+```bash
+docker build -t green-arrow-model .
+```
+
+Run Container:
+```bash
+docker run -d -p 5050:5050 --name ga_model green-arrow-model
+```
+
+### API Endpoint (`/predict`)
+
+- **URL:** `http://localhost:5050/predict`
+- **Method:** `POST` hoặc `GET`
+- **Request Body (dành cho POST):**
+  ```json
+  {
+    "lat": 21.0285,
+    "lon": 105.8542,
+    "target_time": "2026-07-20T12:00:00+07:00" 
+  }
+  ```
+  *(Lưu ý: `target_time` là không bắt buộc. Nếu bỏ trống, API sẽ trả về toàn bộ dự báo 3 ngày tới).*
+
+- **Response:**
+  ```json
+  {
+    "prediction": {
+      "forecast_time": "2026-07-20T12:00:00+07:00",
+      "latitude": 21.0285,
+      "longitude": 105.8542,
+      "disasters": {
+        "Mưa lớn": { "predicted": true, "probability_percent": 3.4414 },
+        "Sạt lở": { "predicted": false, "probability_percent": 2.4898 },
+        "Dông lốc": { "predicted": true, "probability_percent": 2.4483 },
+        "Mưa đá": { "predicted": false, "probability_percent": 4.0360 },
+        "Lũ lụt": { "predicted": false, "probability_percent": 1.3411 }
+      }
+    }
+  }
+  ```
+
 ## Giới hạn vận hành
 
 Đây là xác suất đã được Platt-calibrate trên một lát cắt thời gian của dữ liệu
@@ -229,6 +319,6 @@ thực tế vẫn cần đánh giá calibration theo vùng/thời gian độc l�
 drift, và kết hợp dữ liệu địa hình, thuỷ văn cùng nguồn cảnh báo của cơ quan
 chức năng.
 
-Baseline hiện dùng feature khí tượng tại `t` để dự báo nhãn tại `t + horizon`.
-Lag/rolling theo từng địa điểm là bước mở rộng tiếp theo khi inference có nguồn
-quan trắc lịch sử liên tục; không được tạo từ dữ liệu tương lai.
+Pipeline dùng feature khí tượng tại `t` để dự báo nhãn tại `t + horizon`.
+Lag/rolling được tạo riêng theo từng địa điểm từ tối đa 168 giờ quá khứ và không
+sử dụng dữ liệu tương lai.

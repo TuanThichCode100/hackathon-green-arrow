@@ -12,13 +12,27 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from pipeline.shared.meteo_feature_mapping import (
-    MODEL_FEATURE_COLUMNS,
     OPEN_METEO_HOURLY_VARIABLES,
     map_open_meteo_hourly_to_model_features,
 )
+from weather_data.build_weather_features import build_weather_features
 
 
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+LEGACY_FEATURE_ALIASES = {
+    "temperature_2m": "temperature_2m (°C)",
+    "dew_point_2m": "dew_point_2m (°C)",
+    "precipitation": "precipitation (mm)",
+    "surface_pressure": "surface_pressure (hPa)",
+    "wind_speed_10m": "wind_speed_10m (km/h)",
+    "cloud_cover": "cloud_cover (%)",
+    "wind_gusts_10m": "wind_gusts_10m (km/h)",
+    "et0_fao_evapotranspiration": "et0_fao_evapotranspiration (mm)",
+    "soil_temperature_0_to_7cm": "soil_temperature_0_to_7cm (°C)",
+    "soil_temperature_7_to_28cm": "soil_temperature_7_to_28cm (°C)",
+    "soil_moisture_0_to_7cm": "soil_moisture_0_to_7cm (m³/m³)",
+    "soil_moisture_7_to_28cm": "soil_moisture_7_to_28cm (m³/m³)",
+}
 
 
 def preprocess_open_meteo_response(payload: dict[str, Any]) -> pd.DataFrame:
@@ -28,7 +42,7 @@ def preprocess_open_meteo_response(payload: dict[str, Any]) -> pd.DataFrame:
         raise ValueError("Open-Meteo response does not contain hourly.time")
 
     hourly = pd.DataFrame(payload["hourly"])
-    features = map_open_meteo_hourly_to_model_features(hourly)
+    base_features = map_open_meteo_hourly_to_model_features(hourly)
     timezone_name = payload.get("timezone")
     timestamps = pd.to_datetime(hourly["time"], errors="raise")
     if timezone_name:
@@ -38,6 +52,18 @@ def preprocess_open_meteo_response(payload: dict[str, Any]) -> pd.DataFrame:
             )
         else:
             timestamps = timestamps.dt.tz_convert(timezone_name)
+    feature_source = pd.concat(
+        [
+            pd.DataFrame({"location_id": 0, "time": timestamps}),
+            base_features,
+        ],
+        axis=1,
+    )
+    features = build_weather_features(feature_source, show_progress=False).drop(
+        columns=["location_id", "time"]
+    )
+    for canonical, legacy in LEGACY_FEATURE_ALIASES.items():
+        features[legacy] = features[canonical]
     identity = pd.DataFrame(
         {
             "time": timestamps,
@@ -45,9 +71,7 @@ def preprocess_open_meteo_response(payload: dict[str, Any]) -> pd.DataFrame:
             "longitude": float(payload["longitude"]),
         }
     )
-    return pd.concat([identity, features], axis=1)[
-        ["time", "latitude", "longitude", *MODEL_FEATURE_COLUMNS]
-    ]
+    return pd.concat([identity, features], axis=1)
 
 
 def _retrying_session() -> requests.Session:
@@ -69,6 +93,7 @@ def fetch_open_meteo_forecast(
     longitude: float,
     *,
     forecast_days: int = 7,
+    history_hours: int = 168,
     timezone: str = "Asia/Bangkok",
     timeout_seconds: float = 30,
     session: requests.Session | None = None,
@@ -77,6 +102,8 @@ def fetch_open_meteo_forecast(
 
     if not 1 <= forecast_days <= 16:
         raise ValueError("forecast_days must be between 1 and 16")
+    if history_hours < 168:
+        raise ValueError("history_hours must be at least 168 for model features")
 
     client = session or _retrying_session()
     response = client.get(
@@ -86,6 +113,8 @@ def fetch_open_meteo_forecast(
             "longitude": longitude,
             "hourly": ",".join(OPEN_METEO_HOURLY_VARIABLES),
             "forecast_days": forecast_days,
+            "past_hours": history_hours,
+            "current": "temperature_2m",
             "timezone": timezone,
             "temperature_unit": "celsius",
             "wind_speed_unit": "kmh",
@@ -94,7 +123,30 @@ def fetch_open_meteo_forecast(
         timeout=timeout_seconds,
     )
     response.raise_for_status()
-    return preprocess_open_meteo_response(response.json())
+    payload = response.json()
+    prepared = preprocess_open_meteo_response(payload)
+    current_time = payload.get("current", {}).get("time")
+    if current_time is not None:
+        boundary = pd.Timestamp(current_time)
+        prepared_time = pd.to_datetime(prepared["time"])
+        if prepared_time.dt.tz is not None and boundary.tzinfo is None:
+            matching = prepared_time[
+                prepared_time.dt.tz_localize(None).eq(boundary)
+            ]
+            boundary = (
+                matching.iloc[0]
+                if not matching.empty
+                else boundary.tz_localize(prepared_time.dt.tz, ambiguous=False)
+            )
+        prepared = prepared.loc[prepared_time.ge(boundary)].reset_index(drop=True)
+        if prepared.empty:
+            raise ValueError("Open-Meteo response has no rows at or after current.time")
+        return prepared
+
+    forecast_rows = forecast_days * 24
+    if len(prepared) < forecast_rows:
+        raise ValueError("Open-Meteo response contains fewer forecast rows than expected")
+    return prepared.tail(forecast_rows).reset_index(drop=True)
 
 
 def write_preprocessed_data(data: pd.DataFrame, output_path: str | Path) -> Path:
@@ -118,6 +170,7 @@ def main() -> None:
     parser.add_argument("--latitude", type=float, required=True)
     parser.add_argument("--longitude", type=float, required=True)
     parser.add_argument("--forecast-days", type=int, default=7)
+    parser.add_argument("--history-hours", type=int, default=168)
     parser.add_argument("--timezone", default="Asia/Bangkok")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -126,6 +179,7 @@ def main() -> None:
         args.latitude,
         args.longitude,
         forecast_days=args.forecast_days,
+        history_hours=args.history_hours,
         timezone=args.timezone,
     )
     path = write_preprocessed_data(data, args.output)

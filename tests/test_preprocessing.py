@@ -7,6 +7,7 @@ from pipeline.shared.meteo_feature_mapping import (
     map_open_meteo_hourly_to_model_features,
 )
 from pipeline.preprocessing.open_meteo import preprocess_open_meteo_response
+from weather_data.build_weather_features import live_model_feature_contract
 
 
 class MeteoFeatureMappingTest(unittest.TestCase):
@@ -21,6 +22,7 @@ class MeteoFeatureMappingTest(unittest.TestCase):
             "temperature_2m",
             "dew_point_2m",
             "precipitation",
+            "rain",
             "surface_pressure",
             "wind_speed_10m",
             "cloud_cover",
@@ -73,15 +75,15 @@ class MeteoFeatureMappingTest(unittest.TestCase):
 
         features = map_open_meteo_hourly_to_model_features(hourly)
 
-        self.assertEqual(list(features.columns), MODEL_FEATURE_COLUMNS)
-        self.assertAlmostEqual(features.loc[0, "soil_temperature_0_to_7cm (°C)"], 26.5)
-        self.assertAlmostEqual(features.loc[0, "soil_temperature_7_to_28cm (°C)"], 22.0)
+        self.assertEqual(list(features.columns), [*MODEL_FEATURE_COLUMNS, "rain"])
+        self.assertAlmostEqual(features.loc[0, "soil_temperature_0_to_7cm"], 26.5)
+        self.assertAlmostEqual(features.loc[0, "soil_temperature_7_to_28cm"], 22.0)
         self.assertAlmostEqual(
-            features.loc[0, "soil_moisture_0_to_7cm (m³/m³)"],
+            features.loc[0, "soil_moisture_0_to_7cm"],
             (0.10 * 1 + 0.20 * 2 + 0.40 * 4) / 7,
         )
         self.assertAlmostEqual(
-            features.loc[0, "soil_moisture_7_to_28cm (m³/m³)"],
+            features.loc[0, "soil_moisture_7_to_28cm"],
             (0.40 * 2 + 0.60 * 19) / 21,
         )
 
@@ -115,14 +117,57 @@ class MeteoFeatureMappingTest(unittest.TestCase):
 
         result = preprocess_open_meteo_response(payload)
 
-        self.assertEqual(
-            list(result.columns),
-            ["time", "latitude", "longitude", *MODEL_FEATURE_COLUMNS],
+        self.assertTrue(
+            {"time", "latitude", "longitude", *MODEL_FEATURE_COLUMNS}.issubset(
+                result.columns
+            )
         )
+        self.assertIn("precipitation_sum_24h", result.columns)
+        self.assertIn("temperature_2m (°C)", result.columns)
         self.assertEqual(
             result.loc[0, "time"].isoformat(), "2026-07-18T00:00:00+07:00"
         )
         self.assertEqual(result.loc[0, "latitude"], 21.386)
+
+    def test_response_builds_rich_parquet_feature_contract(self):
+        rows = 200
+        fields = [
+            "temperature_2m",
+            "dew_point_2m",
+            "precipitation",
+            "rain",
+            "surface_pressure",
+            "wind_speed_10m",
+            "cloud_cover",
+            "wind_gusts_10m",
+            "et0_fao_evapotranspiration",
+            "soil_temperature_0cm",
+            "soil_temperature_6cm",
+            "soil_temperature_18cm",
+            "soil_moisture_0_to_1cm",
+            "soil_moisture_1_to_3cm",
+            "soil_moisture_3_to_9cm",
+            "soil_moisture_9_to_27cm",
+        ]
+        payload = {
+            "latitude": 21.386,
+            "longitude": 103.023,
+            "timezone": "Asia/Bangkok",
+            "hourly": {
+                "time": pd.date_range(
+                    "2026-01-01", periods=rows, freq="h"
+                ).strftime("%Y-%m-%dT%H:%M").tolist(),
+                **{field: [1.0] * rows for field in fields},
+            },
+        }
+
+        result = preprocess_open_meteo_response(payload)
+
+        self.assertGreater(len(result.columns), 100)
+        self.assertIn("precipitation_sum_168h", result)
+        self.assertIn("soil_moisture_0_to_7cm_change_24h", result)
+        self.assertFalse(pd.isna(result.iloc[-1]["precipitation_sum_168h"]))
+        self.assertTrue(set(live_model_feature_contract()).issubset(result.columns))
 
 
 if __name__ == "__main__":
