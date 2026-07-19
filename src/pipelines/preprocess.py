@@ -71,6 +71,7 @@ def fetch_meteo_data(
     forecast_days: int | None = None,
     mapping_df: pd.DataFrame | None = None,
     mapping_path: Path = LOCATION_MAPPING_PATH,
+    models: str | None = None,
 ) -> pd.DataFrame:
     """Fetch hourly Open-Meteo data for a named location.
 
@@ -78,6 +79,11 @@ def fetch_meteo_data(
     Open-Meteo forecast API for HOURLY_VARIABLES, and returns a dataframe with
     a "location" column plus a "date" column and one column per hourly
     variable requested.
+
+    `models`, if given, pins the forecast to one named Open-Meteo model (e.g.
+    "gfs_seamless") instead of the default best-match ensemble -- used by
+    inference.py's multi-model agreement check (docs/inference_plan.md §6),
+    which polls several models one at a time for the same window.
     """
     latitude, longitude = get_location_coordinates(location_name, mapping_df, mapping_path)
 
@@ -90,6 +96,8 @@ def fetch_meteo_data(
     }
     if forecast_days is not None:
         params["forecast_days"] = forecast_days
+    if models is not None:
+        params["models"] = models
 
     responses = openmeteo.weather_api(OPEN_METEO_URL, params=params)
     response = responses[0]
