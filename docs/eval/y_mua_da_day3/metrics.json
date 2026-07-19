@@ -1,0 +1,24 @@
+{
+  "disaster": "y_mua_da",
+  "horizon": "day3",
+  "kind": "baseline_rule",
+  "tier": "ok",
+  "threshold": 25.6,
+  "test_block": [
+    "2026-05-14 00:00:00",
+    "2026-07-13 00:00:00"
+  ],
+  "metrics": {
+    "pr_auc": NaN,
+    "f2": 0.0,
+    "f3": 0.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "threshold": 25.6,
+    "n_pos": 0.0,
+    "n": 38880.0,
+    "roc_auc": NaN,
+    "accuracy": 0.3950102880658436
+  }
+}
