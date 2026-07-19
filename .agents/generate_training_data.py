@@ -74,7 +74,7 @@ def main():
         dataset.append({
             "messages": [
                 {"role": "user", "content": format_system_prompt(data, "can_bo")},
-                {"role": "model", "content": cb_resp}
+                {"role": "assistant", "content": cb_resp}
             ]
         })
         
@@ -82,7 +82,7 @@ def main():
         dataset.append({
             "messages": [
                 {"role": "user", "content": format_system_prompt(data, "nguoi_dan")},
-                {"role": "model", "content": nd_resp}
+                {"role": "assistant", "content": nd_resp}
             ]
         })
 
