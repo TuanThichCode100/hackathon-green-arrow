@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  telegram_mcp:
+    build: .
+    container_name: telegram_mcp_server
+    ports:
+      - "8005:8000"
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - PORT=8000
+    restart: unless-stopped
+    env_file:
+      - .env
