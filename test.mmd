@@ -1,0 +1,33 @@
+graph TD
+A[Dữ liệu Thời tiết Open-Meteo] -->|168h lịch sử| B(Pipeline Dự báo AI XGBoost Model)
+B -->|Phát hiện Nguy cơ| C{Cảnh báo Thiên tai}
+
+subgraph AIAgent [AI Agent Module]
+    C --> D[AI Agent Gemini 1.5 Flash]
+    DB[(Supabase pgvector Tài liệu Hướng dẫn)] -.->|RAG Context| D
+    D --> E[Sinh Bản tin Nháp Đa ngôn ngữ]
+end
+
+subgraph HumanInTheLoop [Human in the loop Frontend CRM]
+    E --> F[Cán bộ Tỉnh duyệt Dashboard CRM]
+    F -->|Ủy quyền| G[Cán bộ Xã hoặc Trưởng bản Xác nhận]
+end
+
+subgraph MultiChannel [Multi Channel Dispatch]
+    F -.-> H[Phân phối Đa kênh]
+    G -.-> H
+    H --> I(Tin nhắn Zalo)
+    H --> J(Tin nhắn SMS)
+    H --> K(Auto Call)
+    H --> L(Audio Loa Phát thanh)
+end
+
+H --> M[Hệ thống Quản lý Dân cư Lọc theo Dân tộc Ngôn ngữ]
+M --> N((Người dân))
+
+style A fill:#e1f5fe,stroke:#01579b
+style B fill:#e1f5fe,stroke:#01579b
+style D fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+style F fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
+style G fill:#c8e6c9,stroke:#2e7d32
+style H fill:#d1c4e9,stroke:#4527a0

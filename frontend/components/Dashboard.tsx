@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { s } from '@/lib/style';
-import { useDashboardData, useDetailData } from '@/lib/api';
-
-import { User } from './dashboard/types';
+import { useEffect, useRef, useState } from 'react';
+import { CheckCircle, WarningCircle, XCircle } from '@phosphor-icons/react';
+import { API_BASE_URL, useDashboardData, useDetailData } from '@/lib/api';
+import type { User } from './dashboard/types';
 import Sidebar from './dashboard/Sidebar';
 import Header from './dashboard/Header';
 import MapView from './dashboard/MapView';
@@ -13,144 +12,148 @@ import CommunesView from './dashboard/CommunesView';
 import PolicyView from './dashboard/PolicyView';
 import ChannelsView from './dashboard/ChannelsView';
 import RolesView from './dashboard/RolesView';
+import ResidentsDB from './ResidentsDB';
 import CommuneDetailSlideOver from './dashboard/CommuneDetailSlideOver';
 import UploadModal from './dashboard/UploadModal';
 
-interface MainDashboardProps {
+type ViewKey = 'map' | 'overview' | 'communes' | 'policy' | 'channels' | 'roles' | 'database';
+
+interface Props {
   user: User | null;
   onLogout: () => void;
   onLoginRequest: () => void;
 }
 
-export default function Dashboard({ user, onLogout, onLoginRequest }: MainDashboardProps) {
-  const [view, setView] = useState('map');
+export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
+  const [view, setView] = useState<ViewKey>('map');
   const [timeRange, setTimeRange] = useState('today');
   const [emergency, setEmergency] = useState(false);
   const [detailId, setDetailId] = useState<string | number | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [toastIcon, setToastIcon] = useState('✅');
   const [clock, setClock] = useState('');
+  const [toast, setToast] = useState<{ message: string; tone: 'success' | 'warning' | 'error' } | null>(null);
+  const toastTimer = useRef<number | null>(null);
 
-  const { data: m, isLoading: mLoading } = useDashboardData(emergency, timeRange);
-  const { data: detail, isLoading: dLoading } = useDetailData(detailId, emergency);
+  const { data: snapshot, isLoading, isError } = useDashboardData(emergency, timeRange);
+  const { data: detail } = useDetailData(detailId, emergency);
 
-  const toastTimer = useRef<NodeJS.Timeout | null>(null);
-  const showToast = (msg: string, icon = '✅') => {
-    setToast(msg); setToastIcon(icon);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 3200);
+  const showToast = (message: string, tone: 'success' | 'warning' | 'error' = 'success') => {
+    setToast({ message, tone });
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3400);
   };
 
-  const handleToggleEmergency = async () => {
-    const nextState = !emergency;
-    setEmergency(nextState);
-    if (nextState) {
-      showToast('Đang phân tích rủi ro & gọi AI Agent...', '⏳');
-      try {
-        const res = await fetch('http://localhost:8000/api/agent/manual-trigger', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            commune_ids: [1, 2, 3],
-            disaster_type: "Lũ quét nguy hiểm",
-            message: "Mưa lớn kéo dài"
-          })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          showToast('AI Agent đã ra quyết định hành động!', '🤖');
-          console.log("AI Decision:", data);
-        } else {
-          showToast('Lỗi khi gọi AI Agent', '❌');
-        }
-      } catch (err) {
-        showToast('Không kết nối được tới Backend', '❌');
-        console.error(err);
-      }
-    } else {
-      showToast('Đã tắt chế độ khẩn cấp', '✅');
+  useEffect(() => {
+    const format = () => setClock(new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date()));
+    format();
+    const timer = window.setInterval(format, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const toggleEmergency = async () => {
+    if (!user) {
+      onLoginRequest();
+      return;
+    }
+    const next = !emergency;
+    setEmergency(next);
+    if (!next) {
+      showToast('Đã trở về chế độ giám sát thường trực.');
+      return;
+    }
+    showToast('Đang tạo phiên điều phối khẩn cấp.', 'warning');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/agent/manual-trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commune_ids: [1, 2, 3], disaster_type: 'Lũ quét', message: 'Mưa lớn kéo dài' }),
+      });
+      if (!response.ok) throw new Error('trigger failed');
+      showToast('Phiên điều phối đã được tạo.');
+    } catch {
+      showToast('Không thể kết nối máy chủ. Giao diện đang ở chế độ mô phỏng.', 'error');
     }
   };
 
   const handleAction = async (action: string, communeId: string | number, hamletName: string) => {
+    if (!user) return onLoginRequest();
     try {
-      showToast(`Đang xử lý yêu cầu ${action}...`, '⏳');
-      const res = await fetch(`http://localhost:8000/api/notifications/${action}`, {
+      const response = await fetch(`${API_BASE_URL}/api/notifications/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commune_id: communeId, hamlet_id: 1 })
+        body: JSON.stringify({ commune_id: Number(communeId), hamlet_id: 1 }),
       });
-      if (res.ok) {
-        showToast(`Đã hoàn tất gửi tới ${hamletName}`, '✅');
-      } else {
-        showToast('Có lỗi xảy ra', '❌');
-      }
-    } catch (e) {
-      showToast('Không thể kết nối Backend', '❌');
+      if (!response.ok) throw new Error('action failed');
+      showToast(`Đã ghi nhận hành động cho ${hamletName}.`);
+    } catch {
+      showToast('Không thể hoàn tất hành động lúc này.', 'error');
     }
   };
 
-  // realtime clock
-  useEffect(() => {
-    const p = (n: number) => String(n).padStart(2, '0');
-    const tick = () => { const d = new Date(); setClock(`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`); };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, []);
+  if (isLoading || !snapshot) {
+    return (
+      <div className="app-shell" aria-busy="true">
+        <aside className="rail" />
+        <div className="app-boot" />
+      </div>
+    );
+  }
 
-  if (mLoading || !m) {
-    return <div style={{display:'flex',height:'100vh',alignItems:'center',justifyContent:'center',background:'#0F1E2A',color:'#3FD98A',fontSize:'18px',fontWeight:'700'}}>Đang đồng bộ dữ liệu từ hệ thống...</div>;
+  if (isError) {
+    return (
+      <main className="empty-state">
+        <WarningCircle size={30} />
+        <h1>Không tải được dữ liệu điều hành</h1>
+        <p>Kiểm tra backend tại {API_BASE_URL}, sau đó tải lại trang.</p>
+      </main>
+    );
   }
 
   return (
-    <div style={s('display:flex; height:100vh; width:100%; overflow:hidden; background:#EEF2F6;')}>
-      <Sidebar 
-        user={user} view={view} setView={setView} setDetailId={setDetailId} 
-        emergency={emergency} m={m} onLogout={onLogout} onLoginRequest={onLoginRequest} 
-        handleToggleEmergency={handleToggleEmergency} 
+    <div className="app-shell">
+      <Sidebar
+        user={user}
+        view={view}
+        setView={(next) => { setView(next as ViewKey); setDetailId(null); }}
+        emergency={emergency}
+        onLogout={onLogout}
+        onLoginRequest={onLoginRequest}
+        handleToggleEmergency={toggleEmergency}
       />
-
-      <div style={s('flex:1; display:flex; flex-direction:column; height:100%; min-width:0;')}>
+      <section className="workspace">
         <Header view={view} timeRange={timeRange} setTimeRange={setTimeRange} clock={clock} />
-
         {emergency && (
-          <div style={s('background:linear-gradient(90deg,#C42B2B,#E23D3D); color:#fff; padding:11px 26px; display:flex; align-items:center; gap:14px;')}>
-            <span style={s('font-size:19px; animation:gf-blink 1.1s infinite;')}>⚠️</span>
-            <div style={s('flex:1;')}>
-              <span style={s('font-weight:700; font-size:13.5px;')}>TÌNH TRẠNG KHẨN CẤP ĐANG KÍCH HOẠT</span>
-              <span style={s('font-size:12.5px; opacity:.95; margin-left:10px;')}>{m.alertHeadline}</span>
-            </div>
-            <span style={s('font-size:12px; background:rgba(255,255,255,.18); padding:5px 11px; border-radius:20px; font-weight:600;')}>Độ trễ hệ thống: 38 giây</span>
+          <div className="emergency-banner">
+            <WarningCircle size={17} weight="fill" />
+            <span>Phiên điều phối khẩn cấp đang mở. Dữ liệu mô phỏng cần được cán bộ xác minh trước khi phát cảnh báo.</span>
           </div>
         )}
-
-        <main style={s('flex:1; overflow-y:auto; overflow-x:hidden;')}>
-          {view === 'map' && <MapView m={m} emergency={emergency} setDetailId={setDetailId} view={view} />}
-          {view === 'overview' && <OverviewView m={m} />}
-          {view === 'communes' && <CommunesView m={m} setDetailId={setDetailId} />}
-          {view === 'policy' && <PolicyView m={m} user={user} setUploadOpen={setUploadOpen} />}
-          {view === 'channels' && <ChannelsView m={m} />}
+        <main className="content">
+          {view === 'map' && <MapView m={snapshot} emergency={emergency} setDetailId={setDetailId} view={view} />}
+          {view === 'overview' && <OverviewView m={snapshot} />}
+          {view === 'communes' && <CommunesView m={snapshot} setDetailId={setDetailId} />}
+          {view === 'policy' && <PolicyView m={snapshot} user={user} setUploadOpen={setUploadOpen} />}
+          {view === 'channels' && <ChannelsView m={snapshot} />}
           {view === 'roles' && <RolesView user={user} />}
+          {view === 'database' && <ResidentsDB isProv={user?.role === 'tinh'} showToast={showToast} communesData={snapshot.communes} />}
         </main>
-      </div>
+      </section>
 
       {detail && (
-        <CommuneDetailSlideOver 
-          detail={detail} setDetailId={setDetailId} showToast={showToast} 
-          user={user} onLoginRequest={onLoginRequest} handleAction={handleAction} 
+        <CommuneDetailSlideOver
+          detail={detail}
+          setDetailId={setDetailId}
+          showToast={(message) => showToast(message)}
+          user={user}
+          onLoginRequest={onLoginRequest}
+          handleAction={handleAction}
         />
       )}
-
-      {uploadOpen && (
-        <UploadModal setUploadOpen={setUploadOpen} showToast={showToast} />
-      )}
-
+      {uploadOpen && <UploadModal setUploadOpen={setUploadOpen} showToast={(message) => showToast(message)} />}
       {toast && (
-        <div style={s('position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:1000; background:#0F1E2A; color:#fff; padding:13px 20px; border-radius:11px; box-shadow:0 12px 34px rgba(15,30,42,.3); display:flex; align-items:center; gap:11px; animation:gf-toastin .3s ease;')}>
-          <span style={s('font-size:17px;')}>{toastIcon}</span>
-          <span style={s('font-size:13px; font-weight:500;')}>{toast}</span>
+        <div className="toast" role="status">
+          {toast.tone === 'success' ? <CheckCircle size={17} weight="fill" /> : toast.tone === 'warning' ? <WarningCircle size={17} weight="fill" /> : <XCircle size={17} weight="fill" />}
+          {toast.message}
         </div>
       )}
     </div>

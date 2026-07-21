@@ -1,62 +1,43 @@
-import React from 'react';
-import { s } from '@/lib/style';
-import { KpiCard } from './Shared';
-import { DashboardData } from './types';
+import { Pulse, Broadcast, ChartBar, UsersThree } from '@phosphor-icons/react';
+import type { DashboardData } from './types';
 
-interface OverviewViewProps {
-  m: DashboardData;
-}
-
-export default function OverviewView({ m }: OverviewViewProps) {
+export default function OverviewView({ m }: { m: DashboardData }) {
   return (
-    <div style={s('padding:22px 26px 34px;')}>
-      <div style={s('display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:18px;')}>
-        {m.kpis.map((k, i) => <KpiCard key={i} k={k} />)}
-      </div>
-      <div style={s('display:grid; grid-template-columns:1.4fr 1fr; gap:16px; margin-bottom:16px;')}>
-        <div style={s('background:#fff; border:1px solid #E1E7EE; border-radius:14px; padding:18px 20px;')}>
-          <div style={s('font-family:Georgia,serif; font-weight:700; font-size:15px; margin-bottom:4px;')}>Tỷ lệ phân phối theo kênh</div>
-          <div style={s('font-size:11px; color:#7C8896; margin-bottom:18px;')}>Số tin đã tiếp cận / tổng số gửi đi · <b style={{ color: '#25ADE3' }}>{m.timeText}</b></div>
-          {m.channels.map((ch, i) => (
-            <div key={i} style={s('margin-bottom:15px;')}>
-              <div style={s('display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;')}>
-                <span style={s('font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px;')}><span style={s('font-size:15px;')}>{ch.icon}</span>{ch.name}</span>
-                <span style={s('font-size:12px; color:#5A6675;')}><b style={{ color: '#0F1E2A' }}>{ch.rateStr}</b> · {ch.deliveredStr}/{ch.sentStr}</span>
-              </div>
-              <div style={s('height:9px; background:#EEF2F6; border-radius:6px; overflow:hidden;')}>
-                <div style={s(`height:100%; width:${ch.pct}; background:${ch.color}; border-radius:6px;`)}></div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={s('background:#fff; border:1px solid #E1E7EE; border-radius:14px; padding:18px 20px;')}>
-          <div style={s('font-family:Georgia,serif; font-weight:700; font-size:15px; margin-bottom:4px;')}>Phân bố theo dân tộc</div>
-          <div style={s('font-size:11px; color:#7C8896; margin-bottom:18px;')}>Vùng ảnh hưởng · dịch tự động theo nhóm</div>
-          {m.ethnics.map((e, i) => (
-            <div key={i} style={s('margin-bottom:13px;')}>
-              <div style={s('display:flex; justify-content:space-between; margin-bottom:5px;')}>
-                <span style={s('font-size:12.5px; font-weight:600;')}>{e.name}</span>
-                <span style={s('font-size:11.5px; color:#7C8896;')}>{e.popStr} · {e.pct}</span>
-              </div>
-              <div style={s('height:8px; background:#EEF2F6; border-radius:6px; overflow:hidden;')}>
-                <div style={s(`height:100%; width:${e.pct}; background:#25ADE3; border-radius:6px;`)}></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div style={s('background:#fff; border:1px solid #E1E7EE; border-radius:14px; padding:18px 20px;')}>
-        <div style={s('font-family:Georgia,serif; font-weight:700; font-size:15px; margin-bottom:14px;')}>Hoạt động gần đây</div>
-        {m.activities.map((a, i) => (
-          <div key={i} style={s('display:flex; gap:13px; padding:10px 0; border-bottom:1px solid #F1F4F8;')}>
-            <div style={s(`width:32px; height:32px; border-radius:9px; background:${a.bg}; display:flex; align-items:center; justify-content:center; font-size:15px; flex:0 0 32px;`)}>{a.icon}</div>
-            <div style={s('flex:1;')}>
-              <div style={s('font-size:13px; color:#0F1E2A;')}>{a.text}</div>
-              <div style={s('font-size:10.5px; color:#9AA4B0; margin-top:2px;')}>{a.time}</div>
-            </div>
+    <div className="view-page">
+      <div className="section-heading"><div><h2>Bức tranh vận hành</h2><p>Số liệu tổng hợp {m.timeText}, ưu tiên khả năng tiếp cận cảnh báo.</p></div></div>
+      <section className="metrics-strip">
+        {m.kpis.map((kpi, index) => (
+          <div className="metric-block" key={kpi.label}>
+            <span className="metric-label">{kpi.label}</span>
+            <strong className="mono">{kpi.value}</strong>
+            <span className="metric-label">{kpi.sub}</span>
           </div>
         ))}
+      </section>
+      <div className="data-grid">
+        <section className="data-section">
+          <div className="data-section-header"><h3><Broadcast size={17} /> Hiệu quả kênh phân phối</h3><p>Tin đã tiếp cận trên tổng số gửi.</p></div>
+          {m.channels.length ? m.channels.map((channel) => (
+            <div className="bar-row" key={channel.name}>
+              <div className="bar-meta"><strong>{channel.name}</strong><span className="mono">{channel.deliveredStr}/{channel.sentStr} · {channel.rateStr}</span></div>
+              <div className="bar-track"><div className="bar-fill" style={{ width: channel.pct }} /></div>
+            </div>
+          )) : <div className="empty-state"><ChartBar size={28} /><p>Chưa có dữ liệu phân phối trong khoảng thời gian này.</p></div>}
+        </section>
+        <section className="data-section">
+          <div className="data-section-header"><h3><UsersThree size={17} /> Phân bố dân cư</h3><p>Dùng để lựa chọn ngôn ngữ và kênh phù hợp.</p></div>
+          {m.ethnics.length ? m.ethnics.map((ethnic) => (
+            <div className="bar-row" key={ethnic.name}>
+              <div className="bar-meta"><strong>{ethnic.name}</strong><span className="mono">{ethnic.popStr} · {ethnic.pct}</span></div>
+              <div className="bar-track"><div className="bar-fill" style={{ width: ethnic.pct }} /></div>
+            </div>
+          )) : <div className="empty-state"><UsersThree size={28} /><p>Chưa có dữ liệu dân tộc.</p></div>}
+        </section>
       </div>
+      <section className="data-section" style={{ marginTop: 22 }}>
+        <div className="data-section-header"><h3><Pulse size={17} /> Hoạt động gần đây</h3></div>
+        {m.activities.length ? m.activities.map((item, index) => <div className="bar-row" key={index}><div className="bar-meta"><span>{item.text}</span><span>{item.time}</span></div></div>) : <div className="empty-state"><Pulse size={28} /><p>Chưa ghi nhận hoạt động mới.</p></div>}
+      </section>
     </div>
   );
 }

@@ -9,7 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.110.7",
+    "geist": "^1.5.1",
     "leaflet": "^1.9.4",
     "next": "^16.2.10",
     "react": "^19.2.7",

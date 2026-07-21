@@ -76,6 +76,7 @@ export function buildModel(emergency, timeRange) {
     const notReceived = c.pop - received;
     return {
       id: c.id, name: c.name, district: c.district, icon: c.icon, hazard: c.hazard,
+      lat: c.lat, lng: c.lng, pop: c.pop,
       popStr: fmt(c.pop), receivedStr: fmt(received), notReceivedStr: fmt(notReceived),
       notReceivedColor: notReceived > c.pop * 0.15 ? '#E23D3D' : '#5A6675',
       rateStr: Math.round(rate * 100) + '%', rateColor: rateColor(rate),

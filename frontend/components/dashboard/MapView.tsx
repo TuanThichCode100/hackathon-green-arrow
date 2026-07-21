@@ -1,169 +1,183 @@
-import React, { useEffect, useRef } from 'react';
-import { s } from '@/lib/style';
-import { KpiCard, Legend } from './Shared';
-import { DashboardData } from './types';
-import { statusOf } from '@/lib/data';
+'use client';
 
-interface MapViewProps {
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowsOut, MapPinArea, Path, Warning } from '@phosphor-icons/react';
+import type { DashboardData } from './types';
+
+interface Props {
   m: DashboardData;
   emergency: boolean;
   setDetailId: (id: string | number) => void;
   view: string;
 }
 
-export default function MapView({ m, emergency, setDetailId, view }: MapViewProps) {
+type Risk = 'safe' | 'watch' | 'alert';
+type FeatureInfo = { fid: number; name: string; district: string; risk: Risk; rate: number; linkedId?: string | number };
+
+const fill: Record<Risk, string> = {
+  safe: 'oklch(0.72 0.105 154)',
+  watch: 'oklch(0.79 0.12 78)',
+  alert: 'oklch(0.64 0.16 28)',
+};
+
+function repairText(value: unknown) {
+  if (typeof value !== 'string') return '';
+  const cp1252 = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
+  let result = value;
+  for (let pass = 0; pass < 3 && /[ÃÄÆáºá»]/.test(result); pass += 1) {
+    try {
+      const bytes = Uint8Array.from(Array.from(result).map((char) => {
+        const code = char.charCodeAt(0);
+        const cpIndex = cp1252.indexOf(char);
+        return cpIndex >= 0 ? 0x80 + cpIndex : code & 255;
+      }));
+      const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      if (decoded === result) break;
+      result = decoded;
+    } catch {
+      break;
+    }
+  }
+  return result;
+}
+
+function normalized(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^(xa|phuong|thi tran|tp)\s+/i, '').toLowerCase().trim();
+}
+
+export default function MapView({ m, emergency, setDetailId, view }: Props) {
   const mapRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
-  const [mapReady, setMapReady] = React.useState(false);
+  const [selected, setSelected] = useState<FeatureInfo | null>(null);
+  const [features, setFeatures] = useState<FeatureInfo[]>([]);
+  const [mapError, setMapError] = useState<string | null>(null);
 
-  // 1. Initialize Map
+  const metricsByName = useMemo(() => {
+    const result = new Map<string, any>();
+    m.communes.forEach((commune) => result.set(normalized(commune.name), commune));
+    return result;
+  }, [m.communes]);
+
   useEffect(() => {
     if (view !== 'map') return;
-    let isCancelled = false;
-    let timeoutId: any = null;
+    let cancelled = false;
 
-    import('leaflet').then((LModule) => {
-      if (isCancelled) return;
-      const L = LModule.default;
+    Promise.all([
+      import('leaflet'),
+      fetch('/dien-bien-communes.geojson').then((response) => {
+        if (!response.ok) throw new Error('Không tải được dữ liệu ranh giới');
+        return response.json();
+      }),
+    ]).then(([leafletModule, geojson]) => {
+      if (cancelled) return;
+      const L = leafletModule.default;
+      const container = document.getElementById('province-map');
+      if (!container) return;
 
-      if (!mapRef.current) {
-        const el = document.getElementById('gf-map') as any;
-        if (!el) return;
-
-        if (el._leaflet_id) {
-          el._leaflet_id = null;
-        }
-
-        const map = L.map(el, { zoomControl: true, attributionControl: false, fadeAnimation: false }).setView([21.55, 103.05], 9);
-        mapRef.current = map;
-        
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(map);
-        
-        const layer = L.layerGroup().addTo(map);
-        layerRef.current = layer;
-
-        timeoutId = setTimeout(() => { if (!isCancelled && mapRef.current) mapRef.current.invalidateSize(); }, 200);
-        
-        setMapReady(true);
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
       }
-    });
 
-    return () => {
-      isCancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [view]);
-
-  // 2. Stream Data to Map
-  useEffect(() => {
-    if (view !== 'map' || !mapReady || !layerRef.current) return;
-    let isCancelled = false;
-
-    import('leaflet').then((LModule) => {
-      if (isCancelled) return;
-      const L = LModule.default;
-      const layer = layerRef.current;
-
-      layer.clearLayers();
-
-      (m?.communes || []).forEach((c: any) => {
-        const st = statusOf(c, emergency);
-        const color = st === 'alert' ? '#E23D3D' : st === 'watch' ? '#E8A93B' : '#1E9E6A';
-        const rate = emergency ? (c.recvAlert || 0.6) : (c.recvNormal || 0.98); // Fallback for rate in MapView
-        
-        L.circle([c.lat, c.lng], {
-          radius: c.pop > 30000 ? 9000 : c.pop > 12000 ? 7000 : 5500,
-          color: '#E23D3D', weight: 1.5, opacity: 0.55, dashArray: '5 5', fillColor: '#E23D3D', fillOpacity: 0.05,
-        }).addTo(layer);
-        
-        const marker = L.circleMarker([c.lat, c.lng], {
-          radius: c.pop > 30000 ? 15 : c.pop > 12000 ? 12 : 9,
-          fillColor: color, color: '#fff', weight: 2.5, fillOpacity: 0.9,
-        }).addTo(layer);
-        
-        marker.bindTooltip(`<b>${c.name}</b><br>${Math.round(rate * 100)}% đã nhận`, { direction: 'top', offset: [0, -6] });
-        marker.on('click', () => setDetailId(c.id));
-        
-        if (emergency && st === 'alert' && c.lost) {
-          c.lost.forEach((lp: any) => {
-            L.marker([lp.lat, lp.lng], { icon: L.divIcon({ className: '', html: '<div class="gf-lost-pin"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }) })
-              .addTo(layer)
-              .bindTooltip(`📍 ${lp.name}<br>Chưa phản hồi`, { direction: 'top', offset: [0, -8] });
-          });
-        }
+      const map = L.map(container, {
+        attributionControl: false,
+        zoomControl: true,
+        minZoom: 8,
+        maxZoom: 12,
+        zoomSnap: 0.25,
       });
-    });
+      mapRef.current = map;
+
+      const info: FeatureInfo[] = [];
+      const geoLayer = L.geoJSON(geojson, {
+        style: (feature: any) => {
+          const fid = Number(feature?.properties?.FID || 0);
+          const name = repairText(feature?.properties?.NAME_3);
+          const linked = metricsByName.get(normalized(name));
+          const risk: Risk = emergency ? (fid % 9 < 2 ? 'alert' : fid % 3 === 0 ? 'watch' : 'safe') : 'safe';
+          return { color: 'oklch(0.28 0.025 160)', weight: 0.8, opacity: 0.72, fillColor: fill[risk], fillOpacity: selected?.fid === fid ? 0.95 : 0.72 };
+        },
+        onEachFeature: (feature: any, layer: any) => {
+          const fid = Number(feature?.properties?.FID || 0);
+          const name = repairText(feature?.properties?.name || feature?.properties?.NAME_3) || `Địa bàn ${fid}`;
+          const unitType = repairText(feature?.properties?.unit_type || feature?.properties?.TYPE_3).toLowerCase();
+          const district = `${unitType || 'đơn vị'} mới từ 01/07/2025`;
+          const linked = metricsByName.get(normalized(name));
+          const risk: Risk = emergency ? (fid % 9 < 2 ? 'alert' : fid % 3 === 0 ? 'watch' : 'safe') : 'safe';
+          const rate = linked ? Number.parseInt(linked.rateStr, 10) : emergency ? 61 + (fid % 36) : 94 + (fid % 6);
+          const item = { fid, name, district, risk, rate, linkedId: linked?.id };
+          info.push(item);
+          layer.bindTooltip(`<strong>${name}</strong><br><span>${district}</span><br><span>Tiếp cận: ${rate}%</span>`, { className: 'commune-tooltip', sticky: true });
+          layer.on({
+            mouseover: (event: any) => event.target.setStyle({ weight: 2, fillOpacity: 0.9 }),
+            mouseout: (event: any) => geoLayer.resetStyle(event.target),
+            click: () => {
+              setSelected(item);
+              if (item.linkedId != null) setDetailId(item.linkedId);
+            },
+          });
+        },
+      }).addTo(map);
+
+      layerRef.current = geoLayer;
+      const bounds = geoLayer.getBounds();
+      map.fitBounds(bounds, { padding: [28, 28] });
+      map.setMaxBounds(bounds.pad(0.04));
+      setFeatures(info.sort((a, b) => b.risk.localeCompare(a.risk) || a.name.localeCompare(b.name, 'vi')));
+      window.setTimeout(() => map.invalidateSize(), 0);
+    }).catch((error) => setMapError(error instanceof Error ? error.message : 'Không thể khởi tạo bản đồ'));
 
     return () => {
-      isCancelled = true;
-    };
-  }, [view, emergency, m?.communes, setDetailId, mapReady]);
-
-  useEffect(() => {
-    if (view !== 'map') {
+      cancelled = true;
       if (mapRef.current) {
-        mapRef.current.off();
         mapRef.current.remove();
         mapRef.current = null;
-        layerRef.current = null;
-      }
-    }
-  }, [view]);
-
-  useEffect(() => {
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.off();
-        mapRef.current.remove();
-        mapRef.current = null;
-        layerRef.current = null;
       }
     };
-  }, []);
+  }, [view, emergency, metricsByName, setDetailId]);
+
+  const counts = useMemo(() => ({
+    alert: features.filter((item) => item.risk === 'alert').length,
+    watch: features.filter((item) => item.risk === 'watch').length,
+  }), [features]);
+
+  const focusProvince = () => {
+    if (mapRef.current && layerRef.current) mapRef.current.fitBounds(layerRef.current.getBounds(), { padding: [28, 28] });
+  };
 
   return (
-    <div style={s('padding:22px 26px 30px;')}>
-      <div style={s('display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:18px;')}>
-        {m.kpis.map((k, i) => <KpiCard key={i} k={k} />)}
-      </div>
-      <div style={s('display:grid; gap:16px;')}>
-        <div style={s('background:#fff; border:1px solid #E1E7EE; border-radius:14px; overflow:hidden; display:flex; flex-direction:column;')}>
-          <div style={s('padding:14px 18px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #EEF2F6;')}>
-            <div>
-              <div style={s('font-family:Georgia,serif; font-weight:700; font-size:15px;')}>Bản đồ giám sát — Tỉnh Điện Biên</div>
-              <div style={s('font-size:11px; color:#7C8896; margin-top:2px;')}>Zoom Tỉnh → Huyện → Xã → Bản · Chấm đỏ = người dân chưa phản hồi</div>
-            </div>
-            <div style={s('display:flex; gap:6px;')}>
-              <Legend color="#1E9E6A" label="An toàn" />
-              <Legend color="#E8A93B" label="Theo dõi" ml />
-              <Legend color="#E23D3D" label="Cảnh báo" ml />
-            </div>
-          </div>
-          <div id="gf-map" style={s('flex:1; min-height:660px; width:100%; background:#dfe7ee;')}></div>
-        </div>
+    <div className="map-screen">
+      <section className="map-stage" aria-label="Bản đồ phân vùng rủi ro tỉnh Điện Biên">
+        <div id="province-map" />
+        <div className="map-toolbar"><MapPinArea size={18} weight="bold" /><strong>45 xã, phường Điện Biên · địa giới 2025</strong><button className="icon-button" onClick={focusProvince} aria-label="Hiển thị toàn tỉnh"><ArrowsOut size={17} /></button></div>
+        <div className="map-source">Ranh giới tham chiếu được hợp nhất từ GADM 4.1 theo Nghị quyết 1661/NQ-UBTVQH15, hiệu lực từ 01/07/2025. Màu rủi ro hiện là dữ liệu mô phỏng, không phải cảnh báo chính thức.</div>
+        {mapError && <div className="empty-state"><Warning size={28} /><p>{mapError}</p></div>}
+      </section>
 
-        <div style={s('background:#fff; border:1px solid #E1E7EE; border-radius:14px; display:flex; flex-direction:column; overflow:hidden;')}>
-          <div style={s('padding:14px 18px; border-bottom:1px solid #EEF2F6; display:flex; align-items:center; justify-content:space-between;')}>
-            <div style={s('font-family:Georgia,serif; font-weight:700; font-size:15px;')}>Trạng thái theo Xã</div>
-            <span style={s('font-size:11px; color:#7C8896;')}>{m.communes.length} xã</span>
+      <aside className="map-panel">
+        <div className="panel-section">
+          <span className="panel-kicker">{emergency ? 'Phiên mô phỏng khẩn cấp' : 'Giám sát thường trực'}</span>
+          <h2 className="panel-title">{selected?.name || 'Toàn tỉnh Điện Biên'}</h2>
+          <div className="risk-summary">
+            <div className="risk-metric"><span className="metric-label">Cảnh báo</span><strong className="metric-value mono">{counts.alert}</strong></div>
+            <div className="risk-metric"><span className="metric-label">Theo dõi</span><strong className="metric-value mono">{counts.watch}</strong></div>
           </div>
-          <div style={s('display:grid; grid-template-columns:repeat(3,1fr); gap:4px; padding:10px;')}>
-            {m.communes.map((c) => (
-              <button key={c.id} className="gf-commune-card" onClick={() => setDetailId(c.id)} style={s('width:100%; text-align:left; display:flex; align-items:center; gap:12px; padding:11px 12px; border:1px solid #EEF2F6; background:#fff; border-radius:10px; cursor:pointer;')}>
-                <span style={s('font-size:20px; width:30px; text-align:center;')}>{c.icon}</span>
-                <div style={s('flex:1; min-width:0;')}>
-                  <div style={s('font-size:13px; font-weight:600; color:#0F1E2A;')}>{c.name}</div>
-                  <div style={s('font-size:10.5px; color:#8A95A2;')}>{c.popStr} dân</div>
-                </div>
-                <div style={s('text-align:right;')}>
-                  <div style={s(`font-size:13px; font-weight:700; color:${c.rateColor}; font-variant-numeric:tabular-nums;`)}>{c.rateStr}</div>
-                  <span style={s(c.pillStyle)}>{c.statusLabel}</span>
-                </div>
-              </button>
-            ))}
+          <div className="legend-list">
+            <div className="legend-row"><span className="legend-swatch" style={{ background: fill.safe }} /><span>An toàn</span><span>Ổn định</span></div>
+            <div className="legend-row"><span className="legend-swatch" style={{ background: fill.watch }} /><span>Theo dõi</span><span>Cần quan sát</span></div>
+            <div className="legend-row"><span className="legend-swatch" style={{ background: fill.alert }} /><span>Cảnh báo</span><span>Ưu tiên xử lý</span></div>
           </div>
         </div>
-      </div>
+        <div className="panel-section"><span className="panel-kicker">Địa bàn ưu tiên</span></div>
+        <div className="commune-list">
+          {features.slice(0, 24).map((item) => (
+            <button key={item.fid} className={`commune-row ${selected?.fid === item.fid ? 'selected' : ''}`} onClick={() => { setSelected(item); if (item.linkedId != null) setDetailId(item.linkedId); }}>
+              <div><strong>{item.name}</strong><span>{item.district}</span></div>
+              <div className="commune-rate mono">{item.rate}%<span>{item.risk === 'alert' ? 'Cảnh báo' : item.risk === 'watch' ? 'Theo dõi' : 'An toàn'}</span></div>
+            </button>
+          ))}
+        </div>
+      </aside>
     </div>
   );
 }

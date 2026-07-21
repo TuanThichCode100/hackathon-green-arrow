@@ -163,7 +163,7 @@ export default function ResidentsDB({ isProv, showToast, communesData }) {
         <div style={s('display:flex; gap:10px;')}>
           <input type="file" accept=".csv" ref={fileInputRef} onChange={handleImport} style={{ display: 'none' }} />
           <button onClick={() => fileInputRef.current.click()} style={s('padding:8px 16px; border-radius:8px; background:#fff; border:1px solid #E1E7EE; color:#0F1E2A; font-weight:600; cursor:pointer;')}>
-            📥 Import CSV
+            Import CSV
           </button>
           <button onClick={() => openModal()} style={s('padding:8px 16px; border-radius:8px; background:#1E9E6A; border:none; color:#fff; font-weight:600; cursor:pointer;')}>
             + Thêm mới

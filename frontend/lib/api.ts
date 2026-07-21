@@ -1,6 +1,6 @@
 import useSWR from 'swr';
 import { useMemo } from 'react';
-import { TIME_META, statusMeta, rateColor, pill, fmt, statusOf } from './data';
+import { TIME_META, statusMeta, rateColor, pill, fmt, statusOf, buildModel } from './data';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -64,8 +64,12 @@ export function useDashboardData(emergency, timeRange) {
     });
   }, [communesData, emergency]);
 
-  if (isLoading || isError) {
-    return { data: null, isLoading, isError };
+  if (isError) {
+    return { data: buildModel(emergency, timeRange), isLoading: false, isError: false, isFallback: true };
+  }
+
+  if (isLoading) {
+    return { data: null, isLoading: true, isError: false };
   }
 
   // --- TRANSFORMATION LOGIC (Mapping backend to UI format) ---

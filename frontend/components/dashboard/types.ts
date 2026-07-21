@@ -1,6 +1,8 @@
 export interface User {
+  id?: string | number;
   name: string;
   role: 'tinh' | 'xa';
+  commune_id?: string | number;
 }
 
 export interface Kpi {

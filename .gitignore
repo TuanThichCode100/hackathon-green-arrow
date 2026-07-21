@@ -7,5 +7,7 @@ artifacts/*
 data/meteo_model_input.csv
 predictions.json
 *.csv
+!data/dien_bien_admin_2025_mapping.csv
 *.parquet
 weather_data/
+node_modules/

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sơ đồ Hoạt động GreenForecast CRM</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0F1E2A;
+            color: #ffffff;
+            margin: 0;
+            padding: 40px;
+        }
+        h1 {
+            text-align: center;
+            color: #25ADE3;
+            font-family: Georgia, serif;
+        }
+        p.desc {
+            text-align: center;
+            color: rgba(255,255,255,0.7);
+            max-width: 800px;
+            margin: 0 auto 40px auto;
+            line-height: 1.6;
+        }
+        .graph-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            max-width: 1000px;
+            margin: 0 auto;
+            overflow-x: auto;
+        }
+        .features {
+            max-width: 1000px;
+            margin: 40px auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .feature-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 12px;
+        }
+        .feature-card h3 {
+            margin-top: 0;
+            color: #1E9E6A;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🌱 GreenForecast CRM</h1>
+    <p class="desc">
+        Hệ thống Giám sát & Cảnh báo thời tiết cực đoan dành cho Cán bộ tỉnh Điện Biên. Tích hợp AI sinh bản tin và phân phối đa kênh (SMS, Zalo, Call, Loa).
+    </p>
+
+    <div class="graph-container">
+        <div class="mermaid">
+            graph TD
+            A[Du lieu thoi tiet Open-Meteo] -->|168h lich su| B(Pipeline Du bao AI XGBoost Model)
+            B -->|Phat hien Nguy co| C{Canh bao Thien tai}
+
+            subgraph AIAgent [AI Agent Module]
+                C --> D[AI Agent Gemini 1.5 Flash]
+                DB[(Supabase pgvector Tai lieu Huong dan)] -.->|RAG Context| D
+                D --> E[Sinh Ban tin Nhap Da ngon ngu]
+            end
+
+            subgraph HumanInTheLoop [Human in the loop Frontend CRM]
+                E --> F[Can bo Tinh duyet Dashboard CRM]
+                F -->|Uy quyen| G[Can bo Xa xac nhan]
+            end
+
+            subgraph MultiChannel [Multi Channel Dispatch]
+                F -.-> H[Phan phoi Da kenh]
+                G -.-> H
+                H --> I(Tin nhan Zalo)
+                H --> J(Tin nhan SMS)
+                H --> K(Auto Call)
+                H --> L(Audio Loa Phat thanh)
+            end
+
+            H --> M[He thong Quan ly Dan cu Loc theo Dan toc]
+            M --> N((Nguoi dan))
+                
+            style A fill:#e1f5fe,stroke:#01579b
+            style B fill:#e1f5fe,stroke:#01579b
+            style D fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+            style F fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px
+            style G fill:#c8e6c9,stroke:#2e7d32
+            style H fill:#d1c4e9,stroke:#4527a0
+        </div>
+    </div>
+
+</body>
+</html>
