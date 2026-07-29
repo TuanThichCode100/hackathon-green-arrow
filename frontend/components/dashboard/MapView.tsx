@@ -11,13 +11,14 @@ interface Props {
   view: string;
 }
 
-type Risk = 'safe' | 'watch' | 'alert';
-type FeatureInfo = { fid: number; name: string; district: string; risk: Risk; rate: number; linkedId?: string | number };
+type Risk = 'safe' | 'watch' | 'alert' | 'unverified';
+type FeatureInfo = { fid: number; name: string; district: string; risk: Risk; rate: number | null; linkedId?: string | number };
 
 const fill: Record<Risk, string> = {
   safe: 'oklch(0.72 0.105 154)',
   watch: 'oklch(0.79 0.12 78)',
   alert: 'oklch(0.64 0.16 28)',
+  unverified: 'oklch(0.78 0.012 255)',
 };
 
 function repairText(value: unknown) {
@@ -48,6 +49,7 @@ function normalized(value: string) {
 export default function MapView({ m, emergency, setDetailId, view }: Props) {
   const mapRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
+  const layersByFid = useRef(new Map<number, any>());
   const [selected, setSelected] = useState<FeatureInfo | null>(null);
   const [features, setFeatures] = useState<FeatureInfo[]>([]);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -82,7 +84,7 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
       const map = L.map(container, {
         attributionControl: false,
         zoomControl: true,
-        minZoom: 8,
+        minZoom: 5,
         maxZoom: 12,
         zoomSnap: 0.25,
       });
@@ -94,8 +96,8 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
           const fid = Number(feature?.properties?.FID || 0);
           const name = repairText(feature?.properties?.NAME_3);
           const linked = metricsByName.get(normalized(name));
-          const risk: Risk = emergency ? (fid % 9 < 2 ? 'alert' : fid % 3 === 0 ? 'watch' : 'safe') : 'safe';
-          return { color: 'oklch(0.28 0.025 160)', weight: 0.8, opacity: 0.72, fillColor: fill[risk], fillOpacity: selected?.fid === fid ? 0.95 : 0.72 };
+          const risk: Risk = linked?.statusLabel === 'Cảnh báo' ? 'alert' : linked?.statusLabel === 'Theo dõi' ? 'watch' : linked?.statusLabel === 'An toàn' ? 'safe' : 'unverified';
+          return { color: 'oklch(0.28 0.025 160)', weight: 0.8, opacity: 0.72, fillColor: fill[risk], fillOpacity: 0.72 };
         },
         onEachFeature: (feature: any, layer: any) => {
           const fid = Number(feature?.properties?.FID || 0);
@@ -103,17 +105,17 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
           const unitType = repairText(feature?.properties?.unit_type || feature?.properties?.TYPE_3).toLowerCase();
           const district = `${unitType || 'đơn vị'} mới từ 01/07/2025`;
           const linked = metricsByName.get(normalized(name));
-          const risk: Risk = emergency ? (fid % 9 < 2 ? 'alert' : fid % 3 === 0 ? 'watch' : 'safe') : 'safe';
-          const rate = linked ? Number.parseInt(linked.rateStr, 10) : emergency ? 61 + (fid % 36) : 94 + (fid % 6);
+          const risk: Risk = linked?.statusLabel === 'Cảnh báo' ? 'alert' : linked?.statusLabel === 'Theo dõi' ? 'watch' : linked?.statusLabel === 'An toàn' ? 'safe' : 'unverified';
+          const rate = linked?.rateStr && linked.rateStr !== '—' ? Number.parseInt(linked.rateStr, 10) : null;
           const item = { fid, name, district, risk, rate, linkedId: linked?.id };
           info.push(item);
-          layer.bindTooltip(`<strong>${name}</strong><br><span>${district}</span><br><span>Tiếp cận: ${rate}%</span>`, { className: 'commune-tooltip', sticky: true });
+          layersByFid.current.set(fid, layer);
+          layer.bindTooltip(`<strong>${name}</strong><br><span>${district}</span><br><span>${rate === null ? 'Chưa xác thực' : `Tiếp cận: ${rate}%`}</span>`, { className: 'commune-tooltip', sticky: true });
           layer.on({
             mouseover: (event: any) => event.target.setStyle({ weight: 2, fillOpacity: 0.9 }),
             mouseout: (event: any) => geoLayer.resetStyle(event.target),
             click: () => {
-              setSelected(item);
-              if (item.linkedId != null) setDetailId(item.linkedId);
+              selectItem(item);
             },
           });
         },
@@ -121,7 +123,7 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
 
       layerRef.current = geoLayer;
       const bounds = geoLayer.getBounds();
-      map.fitBounds(bounds, { padding: [28, 28] });
+      window.setTimeout(() => map.fitBounds(bounds, { padding: [28, 28] }), 0);
       map.setMaxBounds(bounds.pad(0.04));
       setFeatures(info.sort((a, b) => b.risk.localeCompare(a.risk) || a.name.localeCompare(b.name, 'vi')));
       window.setTimeout(() => map.invalidateSize(), 0);
@@ -145,12 +147,24 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
     if (mapRef.current && layerRef.current) mapRef.current.fitBounds(layerRef.current.getBounds(), { padding: [28, 28] });
   };
 
+  const selectItem = (item: FeatureInfo) => {
+    const previous = selected && layersByFid.current.get(selected.fid);
+    if (previous) layerRef.current?.resetStyle(previous);
+    const layer = layersByFid.current.get(item.fid);
+    if (layer) {
+      layer.setStyle({ weight: 2.8, color: 'oklch(0.18 0.03 160)', fillOpacity: 0.92 });
+      const bounds = layer.getBounds();
+      if (!mapRef.current.getBounds().contains(bounds)) mapRef.current.flyToBounds(bounds, { padding: [48, 48], duration: 0.25 });
+    }
+    setSelected(item);
+  };
+
   return (
     <div className="map-screen">
       <section className="map-stage" aria-label="Bản đồ phân vùng rủi ro tỉnh Điện Biên">
         <div id="province-map" />
         <div className="map-toolbar"><MapPinArea size={18} weight="bold" /><strong>45 xã, phường Điện Biên · địa giới 2025</strong><button className="icon-button" onClick={focusProvince} aria-label="Hiển thị toàn tỉnh"><ArrowsOut size={17} /></button></div>
-        <div className="map-source">Ranh giới tham chiếu được hợp nhất từ GADM 4.1 theo Nghị quyết 1661/NQ-UBTVQH15, hiệu lực từ 01/07/2025. Màu rủi ro hiện là dữ liệu mô phỏng, không phải cảnh báo chính thức.</div>
+        <div className="map-source">Ranh giới tham chiếu được hợp nhất từ GADM 4.1 theo Nghị quyết 1661/NQ-UBTVQH15, hiệu lực từ 01/07/2025. Màu thể hiện dữ liệu đã xác thực; vùng xám cần được cập nhật.</div>
         {mapError && <div className="empty-state"><Warning size={28} /><p>{mapError}</p></div>}
       </section>
 
@@ -166,14 +180,16 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
             <div className="legend-row"><span className="legend-swatch" style={{ background: fill.safe }} /><span>An toàn</span><span>Ổn định</span></div>
             <div className="legend-row"><span className="legend-swatch" style={{ background: fill.watch }} /><span>Theo dõi</span><span>Cần quan sát</span></div>
             <div className="legend-row"><span className="legend-swatch" style={{ background: fill.alert }} /><span>Cảnh báo</span><span>Ưu tiên xử lý</span></div>
+            <div className="legend-row"><span className="legend-swatch" style={{ background: fill.unverified }} /><span>Chưa xác thực</span><span>Chưa đủ dữ liệu</span></div>
           </div>
+          {selected?.linkedId != null && <button className="secondary-button" style={{ marginTop: 16 }} onClick={() => setDetailId(selected.linkedId!)}>Xem chi tiết</button>}
         </div>
         <div className="panel-section"><span className="panel-kicker">Địa bàn ưu tiên</span></div>
         <div className="commune-list">
-          {features.slice(0, 24).map((item) => (
-            <button key={item.fid} className={`commune-row ${selected?.fid === item.fid ? 'selected' : ''}`} onClick={() => { setSelected(item); if (item.linkedId != null) setDetailId(item.linkedId); }}>
+          {features.map((item) => (
+            <button key={item.fid} className={`commune-row ${selected?.fid === item.fid ? 'selected' : ''}`} onClick={() => selectItem(item)}>
               <div><strong>{item.name}</strong><span>{item.district}</span></div>
-              <div className="commune-rate mono">{item.rate}%<span>{item.risk === 'alert' ? 'Cảnh báo' : item.risk === 'watch' ? 'Theo dõi' : 'An toàn'}</span></div>
+              <div className="commune-rate mono">{item.rate === null ? '—' : `${item.rate}%`}<span>{item.risk === 'alert' ? 'Cảnh báo' : item.risk === 'watch' ? 'Theo dõi' : item.risk === 'safe' ? 'An toàn' : 'Chưa xác thực'}</span></div>
             </button>
           ))}
         </div>
