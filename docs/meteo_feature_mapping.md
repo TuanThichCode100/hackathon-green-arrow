@@ -1,21 +1,21 @@
 # Meteo ↔ Training Feature Mapping
 
-Both `data/hourly_weather_meteo_data.csv` (raw Open-Meteo hourly pull) and the
-training data (`data/df_sample.csv` / `data/weather_merged_2021_2026_labeled.csv`)
+Both `ml-service/data/hourly_weather_meteo_data.csv` (raw Open-Meteo hourly pull) and the
+training data (`ml-service/data/df_sample.csv` / `ml-service/data/weather_merged_2021_2026_labeled.csv`)
 are normalized onto **one clean column-naming convention**, so meteo pulls can be
 fed straight into the training pipeline. The training data originally embedded
 units in column names (e.g. `"temperature_2m (°C)"`), which isn't a valid
 identifier in several libraries (parentheses, `°`, `³`, `%`). Units are now
 tracked separately instead — see `FEATURE_UNITS` below.
 
-Implementation: [`src/pipelines/map_meteo_features.py`](../src/pipelines/map_meteo_features.py)
+Implementation: [`ml-service/src/pipelines/map_meteo_features.py`](../ml-service/src/pipelines/map_meteo_features.py)
 
 - `clean_training_schema()` — strips the `"(unit)"` suffix from the training
-  data's columns. Output: `data/weather_merged_2021_2026_clean.csv`.
+  data's columns. Output: `ml-service/data/weather_merged_2021_2026_clean.csv`.
 - `map_meteo_to_training_schema()` — maps a raw meteo pull onto the same clean
-  schema. Output: `data/hourly_weather_meteo_data_mapped.csv`.
+  schema. Output: `ml-service/data/hourly_weather_meteo_data_mapped.csv`.
 - `FEATURE_UNITS` — dict of clean feature name → unit, for reference/logging/plotting.
-  Exported to `data/feature_units.csv`.
+  Exported to `ml-service/data/feature_units.csv`.
 
 ## Canonical clean schema
 
@@ -85,7 +85,7 @@ since they're what the model predicts.)
 
 | Clean column | Source |
 |---|---|
-| `location_id` | Not returned by a single-location Open-Meteo call — must be attached from `data/maping_location.csv` when looping over communes by lat/lon. |
+| `location_id` | Not returned by a single-location Open-Meteo call — must be attached from `ml-service/data/maping_location.csv` when looping over communes by lat/lon. |
 
 ## Recommended follow-up
 
@@ -95,8 +95,8 @@ data uses — `wind_speed_10m`, `rain`, `et0_fao_evapotranspiration`,
 `soil_moisture_0_to_7cm`, `soil_moisture_7_to_28cm` — instead of the
 point-depth soil variables and generic `evapotranspiration`/`precipitation`
 currently requested in
-[`notebook/get_meteo_data.ipynb`](../notebook/get_meteo_data.ipynb) and
-[`src/pipelines/preprocess.py`](../src/pipelines/preprocess.py). Updating the
+[`ml-service/legacy/notebooks/get_meteo_data.ipynb`](../ml-service/legacy/notebooks/get_meteo_data.ipynb) and
+[`ml-service/src/pipelines/preprocess.py`](../ml-service/src/pipelines/preprocess.py). Updating the
 `hourly` params list in those two places to request the matching variable
 names directly would remove every approximation above and fill in
 `wind_speed_10m`, on the next data pull.

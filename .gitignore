@@ -8,6 +8,10 @@ data/meteo_model_input.csv
 predictions.json
 *.csv
 !data/dien_bien_admin_2025_mapping.csv
+!ml-service/data/feature_units.csv
+!ml-service/data/hourly_weather_meteo_data.csv
+!ml-service/data/maping_location.csv
+!ml-service/notebooks/df_sample.csv
 *.parquet
 weather_data/
 node_modules/

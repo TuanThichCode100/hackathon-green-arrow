@@ -1,6 +1,6 @@
 # Inference Pipeline Strategy — Vietnam Disaster Prediction (v2)
 
-Companion to `training_plan.md` ,`feature_engineering_plan.md` and rules from `disaster_rules.md`. Consumes the `models/*.pkl`artifacts from`training.py`. Produces the required `{forecast, disasters}` JSON, serve-consistent with training.
+Companion to `training_plan.md` ,`feature_engineering_plan.md` and rules from `disaster_rules.md`. Consumes the `ml-service/models/*.pkl` artifacts from `training.py`. Produces the required `{forecast, disasters}` JSON, serve-consistent with training.
 
 **v2 changes:** (1) §3 validity gate now has a **demo bypass toggle**;
 (2) §5 rule thresholds replaced with the legal definitions from **Quyết định
@@ -335,7 +335,7 @@ def build_output(location, horizon, cfg=SERVE_CONFIG):
 
     # 8a. ML cells — source resolved per §3 (AUTO / FORCE_RULE / FORCE_ML)
     for key, title in DISASTER_TITLES_VI.items():
-        art = load_artifact(f"models/{key}_{horizon}.pkl")
+        art = load_artifact(f"ml-service/models/{key}_{horizon}.pkl")
         out = infer_cell(art, X[art["features"]], cfg)
         any_unvalidated |= out["unvalidated"]
         item = {"title": title, "probability": to_pct(out["probability"])}

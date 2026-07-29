@@ -175,3 +175,10 @@ Tài liệu này ghi lại toàn bộ các tính năng, module và kiến trúc 
 - Xóa Supabase client cũ tại `frontend/lib/supabase.ts`, vốn không có caller và giữ fallback credential trong source.
 - Xóa `frontend/test_supabase.js`, script chẩn đoán không được khai báo trong package workflow.
 - Giữ `frontend/utils/supabase/clients.ts` là adapter Supabase phía trình duyệt duy nhất mà `app/page.tsx` và `Login.tsx` sử dụng.
+## Giai đoạn 15 — Cô lập Prediction Service
+
+- Tách toàn bộ mã, model, dữ liệu và Dockerfile dự báo ML khỏi root vào `ml-service/`; backend và frontend vận hành không thay đổi, Docker Compose vẫn chỉ khởi chạy hai dịch vụ đó.
+- Chuẩn hóa ranh giới: `ml-service/app.py` cung cấp `GET /health` và `POST /forecast`; `ml-service/README.md` ghi rõ đây là service độc lập, chưa được tích hợp để tránh hiển thị dự báo thử nghiệm như dữ liệu vận hành.
+- Tách pipeline ML cũ vào `ml-service/legacy/`, kèm README nêu rõ không có caller hiện tại và các đầu việc bắt buộc trước khi tái sử dụng.
+- Giữ `data/build_dien_bien_admin_2025.py` và `data/dien_bien_admin_2025_mapping.csv` tại root, kèm `data/README.md`, vì chúng là nguồn địa giới cho bản đồ Điện Biên thay vì dữ liệu ML.
+- Thêm `CONTEXT.md` để cố định thuật ngữ Prediction Service, Operational Backend, Administrative Geography Source và Legacy ML Prototype; cập nhật các tài liệu ML liên quan theo đường dẫn mới.
