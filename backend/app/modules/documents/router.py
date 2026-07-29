@@ -30,6 +30,12 @@ async def upload_document(
 ):
     try:
         content = await file.read()
+        if not content:
+            raise HTTPException(status_code=422, detail="Tệp tải lên đang trống")
+        if len(content) > 20 * 1024 * 1024:
+            raise HTTPException(status_code=422, detail="Tệp vượt quá giới hạn 20 MB")
+        if not file.filename or file.filename.rsplit(".", 1)[-1].lower() not in {"pdf", "doc", "docx", "txt", "md"}:
+            raise HTTPException(status_code=422, detail="Chỉ hỗ trợ tệp PDF, Word hoặc văn bản")
         
         # Mã hóa AES (Fernet)
         f = Fernet(settings.DOCUMENT_ENCRYPTION_KEY.encode('utf-8'))
@@ -38,14 +44,17 @@ async def upload_document(
         # Upload lên Supabase Storage
         file_ext = file.filename.split('.')[-1] if '.' in file.filename else 'bin'
         file_name = f"{uuid.uuid4().hex}.{file_ext}.enc"
-        
-        get_supabase_admin().storage.from_("documents").upload(
-            file_name,
-            encrypted_content,
-            {"content-type": "application/octet-stream"}
-        )
-        
-        file_path = file_name
+        analysis, summary = service.analyse_document(content, file.filename, title)
+
+        # Prefer managed object storage in production, but provide a local,
+        # encrypted fallback for the configured Docker volume and development.
+        if settings.SUPABASE_URL and settings.supabase_admin_key:
+            get_supabase_admin().storage.from_("documents").upload(
+                file_name, encrypted_content, {"content-type": "application/octet-stream"}
+            )
+            file_path = file_name
+        else:
+            file_path = service.save_local_document(encrypted_content, analysis, file_name, settings.DOCUMENT_STORAGE_DIR)
         
         # Lưu Database
         s_date = datetime.strptime(start_date, "%Y-%m-%d").date()
@@ -57,6 +66,7 @@ async def upload_document(
             "doc_type": doc_type,
             "issued_by": issued_by,
             "file_path": file_path,
+            "llm_summary": summary,
             "start_date": s_date,
             "end_date": e_date,
             "status": "active"
@@ -65,5 +75,7 @@ async def upload_document(
         doc = service.create_document(db, doc_data)
         return {"data": doc}
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi upload: {str(e)}")

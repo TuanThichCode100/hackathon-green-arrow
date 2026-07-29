@@ -15,6 +15,10 @@ export default function UploadModal({ setUploadOpen, showToast }: { setUploadOpe
       return;
     }
     
+    if (file.size > 20 * 1024 * 1024) {
+      showToast('Tệp vượt quá giới hạn 20 MB.', 'error');
+      return;
+    }
     setIsUploading(true);
     try {
       const formData = new FormData();
@@ -34,7 +38,10 @@ export default function UploadModal({ setUploadOpen, showToast }: { setUploadOpe
         body: formData,
       });
 
-      if (!res.ok) throw new Error('Upload failed');
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || 'Không thể tải văn bản lên');
+      }
       
       showToast('Tải văn bản lên thành công và đã được mã hóa!');
       setUploadOpen(false);
@@ -71,7 +78,7 @@ export default function UploadModal({ setUploadOpen, showToast }: { setUploadOpe
           <div style={{ display: 'grid', gap: 14, marginTop: 20 }}>
             <label>
               <span className="metric-label">Tên / Tiêu đề văn bản</span>
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nhập tên văn bản..." style={{ width: '100%', height: 40, marginTop: 6, border: '1px solid var(--line)', borderRadius: 10, padding: '0 10px' }} />
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ví dụ: Công điện ứng phó mưa lũ" style={{ width: '100%', height: 40, marginTop: 6, border: '1px solid var(--line)', borderRadius: 10, padding: '0 10px' }} />
             </label>
             <label>
               <span className="metric-label">Ngày bắt đầu hiệu lực</span>

@@ -262,7 +262,7 @@ export const apiCreateResident = async (data) => {
     headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Create failed');
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Không thể thêm dân cư');
   return res.json();
 };
 
@@ -273,7 +273,7 @@ export const apiUpdateResident = async (id, data) => {
     headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Update failed');
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Không thể cập nhật dân cư');
   return res.json();
 };
 
@@ -283,7 +283,7 @@ export const apiDeleteResident = async (id) => {
     method: 'DELETE',
     headers: token ? {'Authorization': `Bearer ${token}`} : {}
   });
-  if (!res.ok) throw new Error('Delete failed');
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Không thể xóa dân cư');
   return res.json();
 };
 
@@ -294,6 +294,6 @@ export const apiImportResidents = async (records) => {
     headers: { 'Content-Type': 'application/json', ...(token ? {'Authorization': `Bearer ${token}`} : {}) },
     body: JSON.stringify({ records })
   });
-  if (!res.ok) throw new Error('Import failed');
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Không thể import CSV');
   return res.json();
 };

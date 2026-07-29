@@ -23,3 +23,6 @@ class ResidentResponse(ResidentCreate):
 
 class ResidentImport(BaseModel):
     records: list[ResidentCreate]
+
+class ResidentImportResult(BaseModel):
+    imported: int

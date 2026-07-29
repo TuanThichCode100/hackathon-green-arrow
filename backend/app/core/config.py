@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
+from pathlib import Path
 
 class Settings(BaseSettings):
     APP_NAME: str = "GreenForecast API"
@@ -14,6 +15,9 @@ class Settings(BaseSettings):
     SUPABASE_PUBLISHABLE_KEY: str = ""
     SUPABASE_SECRET_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
+    # Local encrypted storage keeps the feature usable in a development or
+    # demo deployment that does not have Supabase Storage configured.
+    DOCUMENT_STORAGE_DIR: str = str(Path(__file__).resolve().parents[2] / "data" / "uploads")
 
     @property
     def supabase_admin_key(self) -> str:

@@ -1,264 +1,84 @@
-import { useState, useRef, useEffect } from 'react';
-import { useResidents, apiCreateResident, apiUpdateResident, apiDeleteResident, apiImportResidents } from '../lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { apiCreateResident, apiDeleteResident, apiImportResidents, apiUpdateResident, useResidents } from '../lib/api';
 
-// Utilities for inline styling
-const s = (str) => {
-  const obj = {};
-  str.split(';').forEach(pair => {
-    if (!pair.trim()) return;
-    const [k, v] = pair.split(':');
-    obj[k.trim().replace(/-./g, x => x[1].toUpperCase())] = v.trim();
-  });
-  return obj;
-};
+const ETHNICS = ['Kinh', 'Thái', 'Mông', 'Khơ Mú', 'Dao'];
+const fieldStyle = { width: '100%', height: 40, border: '1px solid var(--line)', borderRadius: 10, padding: '0 12px', color: 'var(--ink)', background: 'var(--surface)' };
+const buttonStyle = { minHeight: 40, padding: '8px 14px', borderRadius: 10, cursor: 'pointer', fontWeight: 650 };
 
-const validateResident = (data) => {
-  const errors = [];
-  if (!data.name || data.name.trim().length < 2) errors.push("Tên không hợp lệ (ít nhất 2 ký tự).");
-  if (/[^a-zA-ZÀ-ỹ\s]/.test(data.name)) errors.push("Tên không được chứa ký tự đặc biệt.");
-  if (!/^0\d{9}$/.test(data.phone)) errors.push("SĐT phải gồm 10 chữ số và bắt đầu bằng 0.");
-  if (!data.ethnic) errors.push("Vui lòng chọn Dân tộc.");
-  return errors;
-};
+function validateResident(data) {
+  if (!data.name?.trim() || data.name.trim().length < 2) return 'Họ và tên cần có ít nhất 2 ký tự.';
+  if (!/^0\d{9}$/.test(data.phone?.replace(/\s/g, ''))) return 'Số điện thoại phải có 10 chữ số và bắt đầu bằng 0.';
+  if (!data.ethnic) return 'Vui lòng chọn dân tộc.';
+  return null;
+}
+
+function parseCsv(source: string) {
+  const rows: string[][] = [];
+  let row: string[] = [], value = '', quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '"' && quoted && source[index + 1] === '"') { value += char; index += 1; }
+    else if (char === '"') quoted = !quoted;
+    else if ((char === ',' || char === ';') && !quoted) { row.push(value.trim()); value = ''; }
+    else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && source[index + 1] === '\n') index += 1;
+      row.push(value.trim()); if (row.some(Boolean)) rows.push(row); row = []; value = '';
+    } else value += char;
+  }
+  row.push(value.trim()); if (row.some(Boolean)) rows.push(row);
+  return rows;
+}
 
 export default function ResidentsDB({ isProv, showToast, communesData }) {
   const [communeId, setCommuneId] = useState('');
   const [ethnic, setEthnic] = useState('');
   const [page, setPage] = useState(1);
-  
-  // Set default commune if user is Commune level
-  useEffect(() => {
-    if (!isProv && communesData?.length > 0) {
-      setCommuneId(communesData[0].id); // Mặc định gán cho xã đầu tiên (mock cho việc cán bộ xã)
-    }
-  }, [isProv, communesData]);
-
-  const { data, isLoading, isError, mutate } = useResidents(communeId, ethnic, page, 50);
-
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({ name: '', phone: '', ethnic: 'Kinh', literate: true });
-  
-  const fileInputRef = useRef(null);
-
-  const openModal = (resident = null) => {
-    if (resident) {
-      setEditingId(resident.id);
-      setFormData({ name: resident.name, phone: resident.phone, ethnic: resident.ethnic, literate: resident.literate });
-    } else {
-      setEditingId(null);
-      setFormData({ name: '', phone: '', ethnic: 'Kinh', literate: true });
-    }
-    setIsModalOpen(true);
-  };
-
+  const [formError, setFormError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (!isProv && communesData?.[0]?.id) setCommuneId(String(communesData[0].id)); }, [isProv, communesData]);
+  const { data: response, isLoading, isError, mutate } = useResidents(communeId, ethnic, page, 50);
+  const result = response?.data;
+  const residents = result?.items ?? [];
+  const totalPages = Math.max(1, Math.ceil((result?.total ?? 0) / (result?.limit ?? 50)));
+  const selectedCommuneId = Number(communeId);
+  const openModal = (resident = null) => { setEditingId(resident?.id ?? null); setFormData(resident ? { name: resident.name, phone: resident.phone, ethnic: resident.ethnic, literate: resident.literate } : { name: '', phone: '', ethnic: 'Kinh', literate: true }); setFormError(''); setIsModalOpen(true); };
   const handleSave = async () => {
-    if (!isProv && !communeId) {
-      showToast('Lỗi: Bạn chưa được phân bổ Xã.', '❌');
-      return;
-    }
-    
-    const errors = validateResident(formData);
-    if (errors.length > 0) {
-      showToast(errors[0], '❌');
-      return;
-    }
-
-    const payload = {
-      ...formData,
-      commune_id: isProv && communeId ? parseInt(communeId) : (communesData[0]?.id || 1),
-    };
-
+    const error = validateResident(formData);
+    if (error) { setFormError(error); return; }
+    if (!editingId && !selectedCommuneId) { setFormError('Chọn xã/phường trước khi thêm dân cư.'); return; }
     try {
-      showToast('Đang lưu dữ liệu...', '⏳');
-      if (editingId) {
-        await apiUpdateResident(editingId, formData);
-        showToast('Cập nhật thành công', '✅');
-      } else {
-        await apiCreateResident(payload);
-        showToast('Thêm mới thành công', '✅');
-      }
-      setIsModalOpen(false);
-      mutate();
-    } catch (e) {
-      showToast('Lỗi khi lưu dữ liệu', '❌');
-    }
+      const clean = { ...formData, name: formData.name.trim(), phone: formData.phone.replace(/\s/g, '') };
+      if (editingId) await apiUpdateResident(editingId, clean); else await apiCreateResident({ ...clean, commune_id: selectedCommuneId });
+      showToast(editingId ? 'Đã cập nhật dân cư.' : 'Đã thêm dân cư.'); setIsModalOpen(false); mutate();
+    } catch (error) { setFormError(error instanceof Error ? error.message : 'Không thể lưu dữ liệu.'); }
   };
-
-  const handleDelete = async (id) => {
-    if (confirm("Bạn có chắc chắn muốn xóa dữ liệu này?")) {
-      try {
-        await apiDeleteResident(id);
-        showToast('Đã xóa thành công', '✅');
-        mutate();
-      } catch (e) {
-        showToast('Lỗi khi xóa', '❌');
-      }
-    }
-  };
-
-  const handleImport = async (e) => {
-    const file = e.target.files[0];
+  const handleImport = async (event) => {
+    const file = event.target.files?.[0]; event.target.value = '';
     if (!file) return;
-    
-    if (!file.name.endsWith('.csv')) {
-      showToast('Chỉ hỗ trợ file CSV', '❌');
-      return;
-    }
-
-    const text = await file.text();
-    
-    // Parser CSV chuẩn xử lý nháy kép
-    const parseCSV = (str) => {
-      const arr = [];
-      let quote = false;
-      let row = 0, col = 0;
-      for (let c = 0; c < str.length; c++) {
-        let cc = str[c], nc = str[c+1];
-        arr[row] = arr[row] || [];
-        arr[row][col] = arr[row][col] || '';
-        if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
-        if (cc === '"') { quote = !quote; continue; }
-        if (cc === ',' && !quote) { ++col; continue; }
-        if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
-        if (cc === '\n' && !quote) { ++row; col = 0; continue; }
-        if (cc === '\r' && !quote) { ++row; col = 0; continue; }
-        arr[row][col] += cc;
-      }
-      return arr.filter(r => r.length > 1 || (r.length === 1 && r[0].trim() !== ''));
-    };
-
-    const rows = parseCSV(text);
-    if (rows.length <= 1) {
-       showToast('File trống hoặc không có dữ liệu', '❌');
-       return;
-    }
-    
-    const records = [];
-    // Skip header (i=1)
-    for (let i = 1; i < rows.length; i++) {
-      const cols = rows[i];
-      if (cols.length >= 3) {
-        records.push({
-          commune_id: isProv && communeId ? parseInt(communeId) : (communesData[0]?.id || 1),
-          name: (cols[0] || '').trim(),
-          phone: (cols[1] || '').trim(),
-          ethnic: (cols[2] || '').trim(),
-          literate: cols[3] ? (cols[3].trim() === '1' || cols[3].trim().toLowerCase() === 'true') : true
-        });
-      }
-    }
-
-    try {
-      showToast(`Đang nhập ${records.length} bản ghi...`, '⏳');
-      await apiImportResidents(records);
-      showToast('Import thành công', '✅');
-      mutate();
-    } catch (err) {
-      showToast('Lỗi khi Import CSV', '❌');
-    }
-    
-    e.target.value = null;
+    if (!file.name.toLowerCase().endsWith('.csv')) { showToast('Chỉ hỗ trợ tệp CSV.', 'error'); return; }
+    if (!selectedCommuneId && isProv) { showToast('Chọn xã/phường trước khi import CSV.', 'warning'); return; }
+    const rows = parseCsv(await file.text());
+    if (rows.length < 2) { showToast('CSV cần có hàng tiêu đề và ít nhất một bản ghi.', 'error'); return; }
+    const header = rows[0].map((item) => item.toLocaleLowerCase('vi-VN').replace(/[\s_]/g, ''));
+    const indexOf = (...names: string[]) => header.findIndex((item) => names.includes(item));
+    const nameIndex = indexOf('hoten', 'họvàtên', 'name'), phoneIndex = indexOf('sodienthoai', 'sđt', 'phone'), ethnicIndex = indexOf('dantoc', 'ethnic'), literateIndex = indexOf('bietchu', 'literate');
+    if (nameIndex < 0 || phoneIndex < 0 || ethnicIndex < 0) { showToast('CSV phải có cột Họ tên, Số điện thoại và Dân tộc.', 'error'); return; }
+    const records = rows.slice(1).map((row) => ({ commune_id: selectedCommuneId, name: row[nameIndex] ?? '', phone: (row[phoneIndex] ?? '').replace(/\s/g, ''), ethnic: row[ethnicIndex] ?? '', literate: literateIndex < 0 ? true : ['1', 'true', 'có', 'co', 'yes'].includes((row[literateIndex] ?? '').toLocaleLowerCase('vi-VN')) }));
+    const invalid = records.find((record) => validateResident(record));
+    if (invalid) { showToast(`CSV có dòng không hợp lệ, ví dụ: ${invalid.name || 'thiếu họ tên'}.`, 'error'); return; }
+    try { const response = await apiImportResidents(records); showToast(`Đã import ${response.data.imported} bản ghi dân cư.`); setPage(1); mutate(); } catch (error) { showToast(error instanceof Error ? error.message : 'Không thể import CSV.', 'error'); }
   };
-
-  const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
-
-  return (
-    <div style={s('padding:22px 26px;')}>
-      {/* Filters & Actions */}
-      <div style={s('display:flex; justify-content:space-between; margin-bottom:20px; align-items:center;')}>
-        <div style={s('display:flex; gap:12px;')}>
-          {isProv && (
-            <select value={communeId} onChange={e => setCommuneId(e.target.value)} style={s('padding:8px 12px; border-radius:8px; border:1px solid #E1E7EE; outline:none;')}>
-              <option value="">-- Tất cả các Xã --</option>
-              {communesData?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
-          <select value={ethnic} onChange={e => { setEthnic(e.target.value); setPage(1); }} style={s('padding:8px 12px; border-radius:8px; border:1px solid #E1E7EE; outline:none;')}>
-            <option value="">-- Mọi dân tộc --</option>
-            <option value="Kinh">Kinh</option>
-            <option value="Thái">Thái</option>
-            <option value="Mông">Mông (H'Mông)</option>
-            <option value="Khơ Mú">Khơ Mú</option>
-            <option value="Dao">Dao</option>
-          </select>
-        </div>
-        
-        <div style={s('display:flex; gap:10px;')}>
-          <input type="file" accept=".csv" ref={fileInputRef} onChange={handleImport} style={{ display: 'none' }} />
-          <button onClick={() => fileInputRef.current.click()} style={s('padding:8px 16px; border-radius:8px; background:#fff; border:1px solid #E1E7EE; color:#0F1E2A; font-weight:600; cursor:pointer;')}>
-            Import CSV
-          </button>
-          <button onClick={() => openModal()} style={s('padding:8px 16px; border-radius:8px; background:#0EA5E9; border:none; color:#fff; font-weight:600; cursor:pointer;')}>
-            + Thêm Cư dân
-          </button>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div style={s('background:#fff; border-radius:12px; border:1px solid #E1E7EE; overflow:hidden;')}>
-        <table style={s('width:100%; border-collapse:collapse; text-align:left;')}>
-          <thead>
-            <tr style={s('background:#F8FAFC; border-bottom:1px solid #E1E7EE;')}>
-              <th style={s('padding:12px 16px; color:#64748B; font-weight:600; font-size:14px;')}>Họ tên</th>
-              <th style={s('padding:12px 16px; color:#64748B; font-weight:600; font-size:14px;')}>SĐT</th>
-              <th style={s('padding:12px 16px; color:#64748B; font-weight:600; font-size:14px;')}>Dân tộc</th>
-              <th style={s('padding:12px 16px; color:#64748B; font-weight:600; font-size:14px;')}>Biết chữ</th>
-              <th style={s('padding:12px 16px; color:#64748B; font-weight:600; font-size:14px;')}>Hành động</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? <tr><td colSpan={5} style={s('padding:16px; text-align:center;')}>Đang tải...</td></tr> : 
-             (data?.data || []).map(r => (
-              <tr key={r.id} style={s('border-bottom:1px solid #F1F5F9;')}>
-                <td style={s('padding:12px 16px;')}>{r.name}</td>
-                <td style={s('padding:12px 16px;')}>{r.phone}</td>
-                <td style={s('padding:12px 16px;')}>{r.ethnic}</td>
-                <td style={s('padding:12px 16px;')}>{r.literate ? 'Có' : 'Không'}</td>
-                <td style={s('padding:12px 16px; display:flex; gap:8px;')}>
-                  <button onClick={() => openModal(r)} style={s('padding:4px 8px; border-radius:4px; border:1px solid #E1E7EE; cursor:pointer;')}>Sửa</button>
-                  <button onClick={() => handleDelete(r.id)} style={s('padding:4px 8px; border-radius:4px; border:1px solid #FECDD3; color:#E11D48; cursor:pointer;')}>Xóa</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      <div style={s('display:flex; justify-content:space-between; align-items:center; margin-top:20px;')}>
-        <button disabled={page === 1} onClick={() => setPage(p => p - 1)} style={s('padding:8px 16px; border-radius:8px; border:1px solid #E1E7EE; cursor:pointer; background:#fff;')}>Trước</button>
-        <span style={s('font-size:14px; color:#64748B;')}>Trang {page} / {totalPages}</span>
-        <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} style={s('padding:8px 16px; border-radius:8px; border:1px solid #E1E7EE; cursor:pointer; background:#fff;')}>Sau</button>
-      </div>
-
-      {/* Modal */}
-      {isModalOpen && (
-        <div style={s('position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:100;')}>
-          <div style={s('background:#fff; padding:24px; border-radius:12px; width:400px;')}>
-            <h3 style={s('margin-top:0; margin-bottom:20px; color:#0F1E2A;')}>{editingId ? 'Sửa Cư dân' : 'Thêm Cư dân'}</h3>
-            <div style={s('display:flex; flex-direction:column; gap:12px; margin-bottom:20px;')}>
-              <input type="text" placeholder="Họ tên" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={s('padding:8px 12px; border-radius:8px; border:1px solid #E1E7EE; outline:none;')} />
-              <input type="text" placeholder="Số điện thoại" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} style={s('padding:8px 12px; border-radius:8px; border:1px solid #E1E7EE; outline:none;')} />
-              <select value={formData.ethnic} onChange={e => setFormData({...formData, ethnic: e.target.value})} style={s('padding:8px 12px; border-radius:8px; border:1px solid #E1E7EE; outline:none;')}>
-                <option value="Kinh">Kinh</option>
-                <option value="Thái">Thái</option>
-                <option value="Mông">Mông</option>
-                <option value="Khơ Mú">Khơ Mú</option>
-                <option value="Dao">Dao</option>
-              </select>
-              <label style={s('display:flex; align-items:center; gap:8px;')}>
-                <input type="checkbox" checked={formData.literate} onChange={e => setFormData({...formData, literate: e.target.checked})} />
-                Biết chữ
-              </label>
-            </div>
-            <div style={s('display:flex; justify-content:flex-end; gap:10px;')}>
-              <button onClick={() => setIsModalOpen(false)} style={s('padding:8px 16px; border-radius:8px; border:1px solid #E1E7EE; background:#fff; cursor:pointer;')}>Hủy</button>
-              <button onClick={handleSave} style={s('padding:8px 16px; border-radius:8px; background:#0EA5E9; border:none; color:#fff; cursor:pointer;')}>Lưu</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <div style={{ padding: '22px 26px' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 20, alignItems: 'end', flexWrap: 'wrap' }}><div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      {isProv && <label><span className="metric-label">Xã/phường</span><select value={communeId} onChange={(event) => { setCommuneId(event.target.value); setPage(1); }} style={fieldStyle}><option value="">Chọn xã/phường</option>{communesData?.map((commune) => <option key={commune.id} value={commune.id}>{commune.name}</option>)}</select></label>}
+      <label><span className="metric-label">Lọc theo dân tộc</span><select value={ethnic} onChange={(event) => { setEthnic(event.target.value); setPage(1); }} style={fieldStyle}><option value="">Tất cả dân tộc</option>{ETHNICS.map((item) => <option key={item}>{item}</option>)}</select></label></div>
+      <div style={{ display: 'flex', gap: 10 }}><input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={handleImport} style={{ display: 'none' }} /><button onClick={() => fileInputRef.current?.click()} style={{ ...buttonStyle, background: 'var(--surface)', border: '1px solid var(--line)', color: 'var(--ink)' }}>Import CSV</button><button onClick={() => openModal()} style={{ ...buttonStyle, background: 'var(--accent)', color: 'var(--surface)', border: '1px solid var(--accent)' }}>Thêm dân cư</button></div></div>
+    <p className="metric-label" style={{ margin: '-8px 0 16px' }}>CSV gồm các cột: Họ tên, Số điện thoại, Dân tộc, Biết chữ (Có/Không).</p>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: 620 }}><thead><tr style={{ background: 'var(--surface-muted)' }}>{['Họ tên', 'Số điện thoại', 'Dân tộc', 'Biết chữ', 'Thao tác'].map((label) => <th key={label} style={{ padding: '12px 16px' }}>{label}</th>)}</tr></thead><tbody>{isLoading ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center' }}>Đang tải dữ liệu...</td></tr> : isError ? <tr><td colSpan={5} style={{ padding: 20, textAlign: 'center' }}>Không thể tải dữ liệu. Hãy thử lại.</td></tr> : residents.length === 0 ? <tr><td colSpan={5} style={{ padding: 28, textAlign: 'center' }}>Chưa có dân cư. Hãy thêm mới hoặc import CSV.</td></tr> : residents.map((resident) => <tr key={resident.id} style={{ borderTop: '1px solid var(--line)' }}><td style={{ padding: '12px 16px' }}>{resident.name}</td><td style={{ padding: '12px 16px' }}>{resident.phone}</td><td style={{ padding: '12px 16px' }}>{resident.ethnic}</td><td style={{ padding: '12px 16px' }}>{resident.literate ? 'Có' : 'Không'}</td><td style={{ padding: '8px 16px' }}><button onClick={() => openModal(resident)} style={{ ...buttonStyle, minHeight: 32, padding: '4px 8px', border: '1px solid var(--line)', background: 'var(--surface)' }}>Sửa</button> <button onClick={async () => { if (confirm(`Xóa ${resident.name}?`)) { try { await apiDeleteResident(resident.id); showToast('Đã xóa dân cư.'); mutate(); } catch { showToast('Không thể xóa dân cư.', 'error'); } } }} style={{ ...buttonStyle, minHeight: 32, padding: '4px 8px', border: '1px solid var(--danger)', color: 'var(--danger)', background: 'var(--surface)' }}>Xóa</button></td></tr>)}</tbody></table></div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}><button disabled={page === 1} onClick={() => setPage((current) => current - 1)} style={buttonStyle}>Trước</button><span className="metric-label">Trang {page} / {totalPages}</span><button disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)} style={buttonStyle}>Sau</button></div>
+    {isModalOpen && <div style={{ position: 'fixed', inset: 0, display: 'grid', placeItems: 'center', background: 'oklch(0.235 0.022 160 / .42)', zIndex: 100 }}><section role="dialog" aria-modal="true" aria-labelledby="resident-dialog-title" style={{ width: 'min(460px, calc(100vw - 32px))', background: 'var(--surface)', borderRadius: 14, padding: 24, boxShadow: '0 20px 60px oklch(0.235 0.022 160 / .22)' }}><h2 id="resident-dialog-title" style={{ margin: '0 0 20px', fontSize: 20 }}>{editingId ? 'Sửa thông tin dân cư' : 'Thêm dân cư'}</h2><div style={{ display: 'grid', gap: 14 }}><label><span className="metric-label">Họ và tên</span><input value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} placeholder="Ví dụ: Lò Văn Hùng" style={fieldStyle} autoFocus /></label><label><span className="metric-label">Số điện thoại</span><input value={formData.phone} onChange={(event) => setFormData({ ...formData, phone: event.target.value })} inputMode="tel" placeholder="Ví dụ: 0912 345 678" style={fieldStyle} /></label><label><span className="metric-label">Dân tộc</span><select value={formData.ethnic} onChange={(event) => setFormData({ ...formData, ethnic: event.target.value })} style={fieldStyle}>{ETHNICS.map((item) => <option key={item}>{item}</option>)}</select></label><label style={{ display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={formData.literate} onChange={(event) => setFormData({ ...formData, literate: event.target.checked })} /> Biết chữ</label>{formError && <p role="alert" style={{ margin: 0, color: 'var(--danger)', fontSize: 13 }}>{formError}</p>}</div><div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}><button onClick={() => setIsModalOpen(false)} style={{ ...buttonStyle, border: '1px solid var(--line)', background: 'var(--surface)' }}>Hủy</button><button onClick={handleSave} style={{ ...buttonStyle, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'var(--surface)' }}>Lưu</button></div></section></div>}
+  </div>;
 }

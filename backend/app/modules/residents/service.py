@@ -1,4 +1,6 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from fastapi import HTTPException
 from app.modules.residents.models import Resident
 
 def list_residents(db: Session, commune_id: int = None, ethnic: str = None, skip: int = 0, limit: int = 50):
@@ -12,11 +14,15 @@ def list_residents(db: Session, commune_id: int = None, ethnic: str = None, skip
     return total, items
 
 def create_resident(db: Session, data):
-    r = Resident(**data.model_dump())
-    db.add(r)
-    db.commit()
-    db.refresh(r)
-    return r
+    try:
+        r = Resident(**data.model_dump())
+        db.add(r)
+        db.commit()
+        db.refresh(r)
+        return r
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Số điện thoại đã tồn tại trong danh sách dân cư")
 
 def update_resident(db: Session, resident_id: int, data):
     r = db.query(Resident).filter(Resident.id == resident_id).first()
@@ -37,10 +43,16 @@ def delete_resident(db: Session, resident_id: int):
     return False
 
 def import_csv(db: Session, records: list):
-    count = 0
-    for row in records:
-        r = Resident(**row)
-        db.add(r)
-        count += 1
-    db.commit()
-    return count
+    phones = [row["phone"] for row in records]
+    if len(phones) != len(set(phones)):
+        raise HTTPException(status_code=422, detail="CSV có số điện thoại trùng lặp")
+    existing = db.query(Resident.phone).filter(Resident.phone.in_(phones)).first() if phones else None
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Số điện thoại {existing[0]} đã tồn tại")
+    try:
+        db.add_all([Resident(**row) for row in records])
+        db.commit()
+        return len(records)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Không thể import vì có số điện thoại đã tồn tại")

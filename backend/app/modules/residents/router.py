@@ -21,6 +21,18 @@ def create(data: schemas.ResidentCreate, db: Session = Depends(get_db), user: di
         data.commune_id = user.get("commune_id")
     return {"data": service.create_resident(db, data)}
 
+@router.post("/import", response_model=APIResponse[schemas.ResidentImportResult])
+def import_csv(data: schemas.ResidentImport, db: Session = Depends(get_db), user: dict = Depends(require_role(["tinh", "xa"]))):
+    if not data.records:
+        raise HTTPException(status_code=422, detail="CSV chưa có bản ghi hợp lệ")
+    records = []
+    for r in data.records:
+        r_dict = r.model_dump()
+        if user.get("role") == "xa":
+            r_dict["commune_id"] = user.get("commune_id")
+        records.append(r_dict)
+    return {"data": {"imported": service.import_csv(db, records)}}
+
 @router.put("/{id}", response_model=APIResponse[schemas.ResidentResponse])
 def update(id: int, data: schemas.ResidentUpdate, db: Session = Depends(get_db), user: dict = Depends(require_role(["tinh", "xa"]))):
     if user.get("role") == "xa":
@@ -37,14 +49,3 @@ def delete(id: int, db: Session = Depends(get_db), user: dict = Depends(require_
     if not res:
         raise HTTPException(status_code=404, detail="Resident not found")
     return {"data": True}
-
-@router.post("/import", response_model=APIResponse[int])
-def import_csv(data: schemas.ResidentImport, db: Session = Depends(get_db), user: dict = Depends(require_role(["tinh", "xa"]))):
-    # Data is sent from frontend after parsing CSV/Excel
-    records = []
-    for r in data.records:
-        r_dict = r.model_dump()
-        if user.get("role") == "xa":
-            r_dict["commune_id"] = user.get("commune_id")
-        records.append(r_dict)
-    return {"data": service.import_csv(db, records)}
