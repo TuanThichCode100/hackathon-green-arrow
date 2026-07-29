@@ -11,8 +11,9 @@ router = APIRouter(prefix="/api/users", tags=["Users"])
 def list_users(user: dict = Depends(require_role(["tinh"]))):
     try:
         response = get_supabase_admin().auth.admin.list_users()
+        supabase_users = response if isinstance(response, list) else response.users
         users = []
-        for u in response.users:
+        for u in supabase_users:
             meta = u.user_metadata or {}
             users.append({
                 "id": u.id,

@@ -182,3 +182,9 @@ Tài liệu này ghi lại toàn bộ các tính năng, module và kiến trúc 
 - Tách pipeline ML cũ vào `ml-service/legacy/`, kèm README nêu rõ không có caller hiện tại và các đầu việc bắt buộc trước khi tái sử dụng.
 - Giữ `data/build_dien_bien_admin_2025.py` và `data/dien_bien_admin_2025_mapping.csv` tại root, kèm `data/README.md`, vì chúng là nguồn địa giới cho bản đồ Điện Biên thay vì dữ liệu ML.
 - Thêm `CONTEXT.md` để cố định thuật ngữ Prediction Service, Operational Backend, Administrative Geography Source và Legacy ML Prototype; cập nhật các tài liệu ML liên quan theo đường dẫn mới.
+
+## Giai đoạn 16 — Sửa tương thích Supabase Admin API
+
+- Sửa `GET /api/users` để đọc trực tiếp danh sách do Supabase SDK hiện tại trả về, đồng thời vẫn tương thích với response cũ có thuộc tính `.users`.
+- Bổ sung regression test `backend/test_users_router.py` cho contract trả về kiểu `list`, ngăn lỗi `AttributeError: 'list' object has no attribute 'users'` tái diễn.
+- Rebuild backend container và xác nhận `/health` healthy; lời gọi Supabase Admin `list_users()` trong container chạy thành công mà không hiển thị secret hoặc dữ liệu tài khoản.
