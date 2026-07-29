@@ -135,3 +135,11 @@ Tài liệu này ghi lại toàn bộ các tính năng, module và kiến trúc 
 - Bổ sung trạng thái màu, nhãn và pill `Chưa xác thực` trong lớp chuyển đổi dữ liệu frontend.
 - Khi không liên lạc được backend, ứng dụng vẫn giữ app shell và hiển thị banner `Mất kết nối tới trung tâm dữ liệu` cùng thao tác thử kết nối lại.
 - Kiểm tra Open-Meteo từ container backend thành công; client có timeout, kiểm tra HTTP status và scheduler chỉ ghi dự báo khi database sẵn sàng.
+
+## Giai đoạn 10 — Tương tác bản đồ và tra cứu địa bàn
+
+- Map dùng trạng thái rủi ro từ dữ liệu backend; không còn gán màu hoặc tỷ lệ bằng quy luật mô phỏng theo ID.
+- Thêm trạng thái polygon, tooltip và chú giải `Chưa xác thực` cho các địa bàn chưa có dữ liệu vận hành.
+- Một lần chọn polygon hoặc dòng danh sách chỉ chọn/focus địa bàn; slide-over chỉ mở qua nút `Xem chi tiết` rõ ràng.
+- Smart focus chỉ bay camera khi địa bàn nằm ngoài khung nhìn, thời lượng 250 ms; giảm minZoom để bản đồ toàn tỉnh không bị cắt trên desktop.
+- Hiển thị đủ địa bàn từ GeoJSON, bổ sung tìm kiếm keyword không dấu, fallback sai nhẹ tối đa hai ký tự, filter theo trạng thái và tự cuộn danh sách tới polygon được chọn.

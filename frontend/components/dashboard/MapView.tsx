@@ -46,6 +46,20 @@ function normalized(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^(xa|phuong|thi tran|tp)\s+/i, '').toLowerCase().trim();
 }
 
+function editDistance(a: string, b: string) {
+  const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    let previous = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const next = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+      previous = next;
+    }
+  }
+  return row[b.length];
+}
+
 export default function MapView({ m, emergency, setDetailId, view }: Props) {
   const mapRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
@@ -53,6 +67,9 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
   const [selected, setSelected] = useState<FeatureInfo | null>(null);
   const [features, setFeatures] = useState<FeatureInfo[]>([]);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [activeRisk, setActiveRisk] = useState<Risk | 'all'>('all');
+  const listRows = useRef(new Map<number, HTMLButtonElement>());
 
   const metricsByName = useMemo(() => {
     const result = new Map<string, any>();
@@ -143,6 +160,15 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
     watch: features.filter((item) => item.risk === 'watch').length,
   }), [features]);
 
+  const visibleFeatures = useMemo(() => {
+    const keyword = normalized(query);
+    const filtered = activeRisk === 'all' ? features : features.filter((item) => item.risk === activeRisk);
+    if (!keyword) return filtered;
+    const exact = filtered.filter((item) => normalized(item.name).split(' ').every((token) => token.includes(keyword) || keyword.includes(token)) || normalized(item.name).includes(keyword));
+    if (exact.length) return exact;
+    return filtered.filter((item) => editDistance(normalized(item.name), keyword) <= 2);
+  }, [activeRisk, features, query]);
+
   const focusProvince = () => {
     if (mapRef.current && layerRef.current) mapRef.current.fitBounds(layerRef.current.getBounds(), { padding: [28, 28] });
   };
@@ -157,6 +183,7 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
       if (!mapRef.current.getBounds().contains(bounds)) mapRef.current.flyToBounds(bounds, { padding: [48, 48], duration: 0.25 });
     }
     setSelected(item);
+    window.setTimeout(() => listRows.current.get(item.fid)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0);
   };
 
   return (
@@ -184,10 +211,10 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
           </div>
           {selected?.linkedId != null && <button className="secondary-button" style={{ marginTop: 16 }} onClick={() => setDetailId(selected.linkedId!)}>Xem chi tiết</button>}
         </div>
-        <div className="panel-section"><span className="panel-kicker">Địa bàn ưu tiên</span></div>
+        <div className="panel-section"><span className="panel-kicker">Địa bàn</span><input className="commune-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="VD: Điện Biên Phủ" aria-label="Tìm kiếm xã, phường" /><div className="map-filter-row">{(['all', 'alert', 'watch', 'safe', 'unverified'] as const).map((risk) => <button key={risk} className={activeRisk === risk ? 'active' : ''} onClick={() => setActiveRisk(risk)}>{risk === 'all' ? 'Tất cả' : risk === 'alert' ? 'Cảnh báo' : risk === 'watch' ? 'Theo dõi' : risk === 'safe' ? 'An toàn' : 'Chưa xác thực'}</button>)}</div></div>
         <div className="commune-list">
-          {features.map((item) => (
-            <button key={item.fid} className={`commune-row ${selected?.fid === item.fid ? 'selected' : ''}`} onClick={() => selectItem(item)}>
+          {visibleFeatures.map((item) => (
+            <button key={item.fid} ref={(node) => { if (node) listRows.current.set(item.fid, node); }} className={`commune-row ${selected?.fid === item.fid ? 'selected' : ''}`} onClick={() => selectItem(item)}>
               <div><strong>{item.name}</strong><span>{item.district}</span></div>
               <div className="commune-rate mono">{item.rate === null ? '—' : `${item.rate}%`}<span>{item.risk === 'alert' ? 'Cảnh báo' : item.risk === 'watch' ? 'Theo dõi' : item.risk === 'safe' ? 'An toàn' : 'Chưa xác thực'}</span></div>
             </button>
