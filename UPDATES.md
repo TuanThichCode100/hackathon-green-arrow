@@ -143,3 +143,6 @@ Tài liệu này ghi lại toàn bộ các tính năng, module và kiến trúc 
 - Một lần chọn polygon hoặc dòng danh sách chỉ chọn/focus địa bàn; slide-over chỉ mở qua nút `Xem chi tiết` rõ ràng.
 - Smart focus chỉ bay camera khi địa bàn nằm ngoài khung nhìn, thời lượng 250 ms; giảm minZoom để bản đồ toàn tỉnh không bị cắt trên desktop.
 - Hiển thị đủ địa bàn từ GeoJSON, bổ sung tìm kiếm keyword không dấu, fallback sai nhẹ tối đa hai ký tự, filter theo trạng thái và tự cuộn danh sách tới polygon được chọn.
+- Ổn định lifecycle Leaflet khi SWR tái xác thực dữ liệu: không tái tạo map hoặc làm reset khung nhìn trong lúc người dùng chọn địa bàn; đồng thời làm sạch registry layer trước mỗi lượt khởi tạo.
+- Bổ sung trạng thái rỗng `Không tìm thấy địa bàn phù hợp.` cho tổ hợp tìm kiếm/lọc không có kết quả.
+- Sửa thao tác cuộn khi chọn xã: chỉ cuộn vùng danh sách nội bộ, không còn kéo cả trang làm bản đồ ra khỏi viewport; focus giữ nguyên mức zoom và chỉ bay tới tâm địa bàn khi tâm nằm ngoài khung nhìn.

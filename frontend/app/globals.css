@@ -98,6 +98,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .legend-row { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; font-size: 11px; }
 .legend-swatch { width: 14px; height: 14px; border: 1px solid oklch(0.3 0.02 155 / .15); border-radius: 4px; }
 .commune-list { min-height: 0; overflow: auto; }
+.commune-empty { margin: 0; padding: 20px; color: var(--ink-muted); font-size: 12px; text-align: center; }
 .commune-search { width:100%; box-sizing:border-box; margin-top:12px; min-height:38px; padding:0 11px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); font-size:12px; }
 .map-filter-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
 .map-filter-row button { min-height:28px; padding:0 8px; border:1px solid var(--line); border-radius:999px; background:var(--surface); color:var(--ink-muted); font-size:10px; cursor:pointer; }

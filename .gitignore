@@ -11,3 +11,8 @@ predictions.json
 *.parquet
 weather_data/
 node_modules/
+.env
+*.png
+*.jpg
+
+.playwright-cli/

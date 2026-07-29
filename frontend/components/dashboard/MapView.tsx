@@ -76,6 +76,8 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
     m.communes.forEach((commune) => result.set(normalized(commune.name), commune));
     return result;
   }, [m.communes]);
+  const metricsByNameRef = useRef(metricsByName);
+  metricsByNameRef.current = metricsByName;
 
   useEffect(() => {
     if (view !== 'map') return;
@@ -107,12 +109,13 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
       });
       mapRef.current = map;
 
+      layersByFid.current.clear();
       const info: FeatureInfo[] = [];
       const geoLayer = L.geoJSON(geojson, {
         style: (feature: any) => {
           const fid = Number(feature?.properties?.FID || 0);
           const name = repairText(feature?.properties?.NAME_3);
-          const linked = metricsByName.get(normalized(name));
+          const linked = metricsByNameRef.current.get(normalized(name));
           const risk: Risk = linked?.statusLabel === 'Cảnh báo' ? 'alert' : linked?.statusLabel === 'Theo dõi' ? 'watch' : linked?.statusLabel === 'An toàn' ? 'safe' : 'unverified';
           return { color: 'oklch(0.28 0.025 160)', weight: 0.8, opacity: 0.72, fillColor: fill[risk], fillOpacity: 0.72 };
         },
@@ -121,7 +124,7 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
           const name = repairText(feature?.properties?.name || feature?.properties?.NAME_3) || `Địa bàn ${fid}`;
           const unitType = repairText(feature?.properties?.unit_type || feature?.properties?.TYPE_3).toLowerCase();
           const district = `${unitType || 'đơn vị'} mới từ 01/07/2025`;
-          const linked = metricsByName.get(normalized(name));
+          const linked = metricsByNameRef.current.get(normalized(name));
           const risk: Risk = linked?.statusLabel === 'Cảnh báo' ? 'alert' : linked?.statusLabel === 'Theo dõi' ? 'watch' : linked?.statusLabel === 'An toàn' ? 'safe' : 'unverified';
           const rate = linked?.rateStr && linked.rateStr !== '—' ? Number.parseInt(linked.rateStr, 10) : null;
           const item = { fid, name, district, risk, rate, linkedId: linked?.id };
@@ -153,7 +156,9 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
         mapRef.current = null;
       }
     };
-  }, [view, emergency, metricsByName, setDetailId]);
+  // Keep the Leaflet instance stable while dashboard data revalidates. Recreating it
+  // during a list selection resets the viewport and interrupts the short fly animation.
+  }, [view]);
 
   const counts = useMemo(() => ({
     alert: features.filter((item) => item.risk === 'alert').length,
@@ -180,10 +185,20 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
     if (layer) {
       layer.setStyle({ weight: 2.8, color: 'oklch(0.18 0.03 160)', fillOpacity: 0.92 });
       const bounds = layer.getBounds();
-      if (!mapRef.current.getBounds().contains(bounds)) mapRef.current.flyToBounds(bounds, { padding: [48, 48], duration: 0.25 });
+      // Preserve the province context and avoid Leaflet's fitBounds jump for
+      // border communes. We only pan when the commune's centre is off-screen.
+      if (!mapRef.current.getBounds().contains(bounds.getCenter())) {
+        mapRef.current.flyTo(bounds.getCenter(), mapRef.current.getZoom(), { duration: 0.25 });
+      }
     }
     setSelected(item);
-    window.setTimeout(() => listRows.current.get(item.fid)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0);
+    window.setTimeout(() => {
+      const list = document.querySelector<HTMLElement>('.commune-list');
+      const row = listRows.current.get(item.fid);
+      if (!list || !row) return;
+      const rowTop = row.offsetTop - list.offsetTop;
+      list.scrollTo({ top: Math.max(0, rowTop - (list.clientHeight - row.offsetHeight) / 2), behavior: 'smooth' });
+    }, 0);
   };
 
   return (
@@ -213,6 +228,7 @@ export default function MapView({ m, emergency, setDetailId, view }: Props) {
         </div>
         <div className="panel-section"><span className="panel-kicker">Địa bàn</span><input className="commune-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="VD: Điện Biên Phủ" aria-label="Tìm kiếm xã, phường" /><div className="map-filter-row">{(['all', 'alert', 'watch', 'safe', 'unverified'] as const).map((risk) => <button key={risk} className={activeRisk === risk ? 'active' : ''} onClick={() => setActiveRisk(risk)}>{risk === 'all' ? 'Tất cả' : risk === 'alert' ? 'Cảnh báo' : risk === 'watch' ? 'Theo dõi' : risk === 'safe' ? 'An toàn' : 'Chưa xác thực'}</button>)}</div></div>
         <div className="commune-list">
+          {visibleFeatures.length === 0 && <p className="commune-empty">Không tìm thấy địa bàn phù hợp.</p>}
           {visibleFeatures.map((item) => (
             <button key={item.fid} ref={(node) => { if (node) listRows.current.set(item.fid, node); }} className={`commune-row ${selected?.fid === item.fid ? 'selected' : ''}`} onClick={() => selectItem(item)}>
               <div><strong>{item.name}</strong><span>{item.district}</span></div>
