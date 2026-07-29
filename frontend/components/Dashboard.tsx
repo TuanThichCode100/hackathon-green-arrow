@@ -61,32 +61,61 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
       showToast('Đã trở về chế độ giám sát thường trực.');
       return;
     }
-    showToast('Đang tạo phiên điều phối khẩn cấp.', 'warning');
+    showToast('Đang tạo phiên điều phối khẩn cấp...', 'warning');
+    
+    // Lấy dữ liệu thực tế
+    let affectedIds = [1, 2, 3];
+    let disasterType = 'Lũ quét';
+    if (snapshot) {
+      const alertCommunes = snapshot.communes.filter(c => c.statusLabel === 'Cảnh báo');
+      if (alertCommunes.length > 0) {
+        affectedIds = alertCommunes.map((commune) => Number(commune.id));
+      } else {
+        affectedIds = snapshot.communes.map((commune) => Number(commune.id)).slice(0, 3);
+      }
+      
+      if (snapshot.predictions && snapshot.predictions.length > 0) {
+        disasterType = snapshot.predictions[0].disaster_type || 'Lũ quét';
+      }
+    }
+    
     try {
+      const token = window.localStorage.getItem('auth_token');
       const response = await fetch(`${API_BASE_URL}/api/agent/manual-trigger`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commune_ids: [1, 2, 3], disaster_type: 'Lũ quét', message: 'Mưa lớn kéo dài' }),
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ 
+          commune_ids: affectedIds, 
+          disaster_type: disasterType, 
+          message: 'Cảnh báo phát đi từ trung tâm điều hành' 
+        }),
       });
       if (!response.ok) throw new Error('trigger failed');
-      showToast('Phiên điều phối đã được tạo.');
+      showToast('Phiên điều phối đã được tạo và thông báo đã được gửi.');
     } catch {
-      showToast('Không thể kết nối máy chủ. Giao diện đang ở chế độ mô phỏng.', 'error');
+      showToast('Không thể kết nối máy chủ hoặc lỗi phân quyền. Giao diện đang ở chế độ mô phỏng.', 'error');
     }
   };
 
-  const handleAction = async (action: string, communeId: string | number, hamletName: string) => {
+  const handleAction = async (action: string, communeId: string | number, hamletId: number, hamletName: string) => {
     if (!user) return onLoginRequest();
     try {
+      const token = window.localStorage.getItem('auth_token');
       const response = await fetch(`${API_BASE_URL}/api/notifications/${action}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commune_id: Number(communeId), hamlet_id: 1 }),
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ commune_id: Number(communeId), hamlet_id: hamletId }),
       });
       if (!response.ok) throw new Error('action failed');
       showToast(`Đã ghi nhận hành động cho ${hamletName}.`);
     } catch {
-      showToast('Không thể hoàn tất hành động lúc này.', 'error');
+      showToast('Không thể hoàn tất hành động lúc này hoặc lỗi phân quyền.', 'error');
     }
   };
 
@@ -96,16 +125,6 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
         <aside className="rail" />
         <div className="app-boot" />
       </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <main className="empty-state">
-        <WarningCircle size={30} />
-        <h1>Không tải được dữ liệu điều hành</h1>
-        <p>Kiểm tra backend tại {API_BASE_URL}, sau đó tải lại trang.</p>
-      </main>
     );
   }
 
@@ -122,6 +141,13 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
       />
       <section className="workspace">
         <Header view={view} timeRange={timeRange} setTimeRange={setTimeRange} clock={clock} />
+        {isError && (
+          <div className="data-center-banner" role="alert">
+            <WarningCircle size={17} weight="fill" />
+            <span>Mất kết nối tới trung tâm dữ liệu</span>
+            <button type="button" onClick={() => window.location.reload()}>Thử kết nối lại</button>
+          </div>
+        )}
         {emergency && (
           <div className="emergency-banner">
             <WarningCircle size={17} weight="fill" />

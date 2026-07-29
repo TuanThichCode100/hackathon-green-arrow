@@ -72,6 +72,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--safe); }
 .content { flex: 1; min-height: 0; overflow: auto; }
 .emergency-banner { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 26px; background: oklch(0.94 0.035 28); border-bottom: 1px solid oklch(0.84 0.06 28); color: oklch(0.37 0.13 28); font-size: 12px; font-weight: 650; }
+.data-center-banner { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 26px; background: #fff5f3; border-bottom: 1px solid #f4b3a8; color: #9f1d11; font-size: 12px; font-weight: 650; }
+.data-center-banner button { margin-left: auto; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 750; cursor: pointer; }
 
 .map-screen { height: calc(100dvh - 72px); min-height: 620px; display: grid; grid-template-columns: minmax(0, 1fr) 330px; }
 .map-stage { position: relative; min-height: 0; background: oklch(0.925 0.016 155); overflow: hidden; }

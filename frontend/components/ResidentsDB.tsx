@@ -107,21 +107,43 @@ export default function ResidentsDB({ isProv, showToast, communesData }) {
     }
 
     const text = await file.text();
-    const rows = text.split('\n').map(r => r.trim()).filter(r => r.length > 0);
+    
+    // Parser CSV chuẩn xử lý nháy kép
+    const parseCSV = (str) => {
+      const arr = [];
+      let quote = false;
+      let row = 0, col = 0;
+      for (let c = 0; c < str.length; c++) {
+        let cc = str[c], nc = str[c+1];
+        arr[row] = arr[row] || [];
+        arr[row][col] = arr[row][col] || '';
+        if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
+        if (cc === '"') { quote = !quote; continue; }
+        if (cc === ',' && !quote) { ++col; continue; }
+        if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
+        if (cc === '\n' && !quote) { ++row; col = 0; continue; }
+        if (cc === '\r' && !quote) { ++row; col = 0; continue; }
+        arr[row][col] += cc;
+      }
+      return arr.filter(r => r.length > 1 || (r.length === 1 && r[0].trim() !== ''));
+    };
+
+    const rows = parseCSV(text);
     if (rows.length <= 1) {
        showToast('File trống hoặc không có dữ liệu', '❌');
        return;
     }
     
     const records = [];
+    // Skip header (i=1)
     for (let i = 1; i < rows.length; i++) {
-      const cols = rows[i].split(',');
+      const cols = rows[i];
       if (cols.length >= 3) {
         records.push({
           commune_id: isProv && communeId ? parseInt(communeId) : (communesData[0]?.id || 1),
-          name: cols[0].trim(),
-          phone: cols[1].trim(),
-          ethnic: cols[2].trim(),
+          name: (cols[0] || '').trim(),
+          phone: (cols[1] || '').trim(),
+          ethnic: (cols[2] || '').trim(),
           literate: cols[3] ? (cols[3].trim() === '1' || cols[3].trim().toLowerCase() === 'true') : true
         });
       }
@@ -139,6 +161,8 @@ export default function ResidentsDB({ isProv, showToast, communesData }) {
     e.target.value = null;
   };
 
+  const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
+
   return (
     <div style={s('padding:22px 26px;')}>
       {/* Filters & Actions */}
@@ -150,7 +174,7 @@ export default function ResidentsDB({ isProv, showToast, communesData }) {
               {communesData?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
-          <select value={ethnic} onChange={e => setEthnic(e.target.value)} style={s('padding:8px 12px; border-radius:8px; border:1px solid #E1E7EE; outline:none;')}>
+          <select value={ethnic} onChange={e => { setEthnic(e.target.value); setPage(1); }} style={s('padding:8px 12px; border-radius:8px; border:1px solid #E1E7EE; outline:none;')}>
             <option value="">-- Mọi dân tộc --</option>
             <option value="Kinh">Kinh</option>
             <option value="Thái">Thái</option>
@@ -165,87 +189,72 @@ export default function ResidentsDB({ isProv, showToast, communesData }) {
           <button onClick={() => fileInputRef.current.click()} style={s('padding:8px 16px; border-radius:8px; background:#fff; border:1px solid #E1E7EE; color:#0F1E2A; font-weight:600; cursor:pointer;')}>
             Import CSV
           </button>
-          <button onClick={() => openModal()} style={s('padding:8px 16px; border-radius:8px; background:#1E9E6A; border:none; color:#fff; font-weight:600; cursor:pointer;')}>
-            + Thêm mới
+          <button onClick={() => openModal()} style={s('padding:8px 16px; border-radius:8px; background:#0EA5E9; border:none; color:#fff; font-weight:600; cursor:pointer;')}>
+            + Thêm Cư dân
           </button>
         </div>
       </div>
 
       {/* Table */}
-      <div style={s('background:#fff; border:1px solid #E1E7EE; border-radius:12px; overflow:hidden;')}>
-        <table style={s('width:100%; border-collapse:collapse; text-align:left; font-size:13px;')}>
+      <div style={s('background:#fff; border-radius:12px; border:1px solid #E1E7EE; overflow:hidden;')}>
+        <table style={s('width:100%; border-collapse:collapse; text-align:left;')}>
           <thead>
-            <tr style={s('background:#F7F9FB; border-bottom:1px solid #E1E7EE; color:#7C8896;')}>
-              <th style={s('padding:12px 16px; font-weight:600;')}>Họ tên</th>
-              <th style={s('padding:12px 16px; font-weight:600;')}>SĐT (Nhận SMS/Gọi)</th>
-              <th style={s('padding:12px 16px; font-weight:600;')}>Dân tộc</th>
-              <th style={s('padding:12px 16px; font-weight:600;')}>Biết chữ (SMS)</th>
-              <th style={s('padding:12px 16px; font-weight:600; text-align:right;')}>Thao tác</th>
+            <tr style={s('background:#F8FAFC; border-bottom:1px solid #E1E7EE;')}>
+              <th style={s('padding:12px 16px; color:#64748B; font-weight:600; font-size:14px;')}>Họ tên</th>
+              <th style={s('padding:12px 16px; color:#64748B; font-weight:600; font-size:14px;')}>SĐT</th>
+              <th style={s('padding:12px 16px; color:#64748B; font-weight:600; font-size:14px;')}>Dân tộc</th>
+              <th style={s('padding:12px 16px; color:#64748B; font-weight:600; font-size:14px;')}>Biết chữ</th>
+              <th style={s('padding:12px 16px; color:#64748B; font-weight:600; font-size:14px;')}>Hành động</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading ? (
-              <tr><td colSpan={5} style={s('padding:30px; text-align:center; color:#7C8896;')}>Đang tải dữ liệu...</td></tr>
-            ) : isError ? (
-              <tr><td colSpan={5} style={s('padding:30px; text-align:center; color:#E23D3D;')}>Lỗi tải dữ liệu</td></tr>
-            ) : !data || data.items.length === 0 ? (
-              <tr><td colSpan={5} style={s('padding:30px; text-align:center; color:#7C8896;')}>Chưa có dữ liệu</td></tr>
-            ) : (
-              data.items.map(r => (
-                <tr key={r.id} style={s('border-bottom:1px solid #EEF2F6;')}>
-                  <td style={s('padding:12px 16px; font-weight:600; color:#0F1E2A;')}>{r.name}</td>
-                  <td style={s('padding:12px 16px; font-family:monospace;')}>{r.phone}</td>
-                  <td style={s('padding:12px 16px;')}>
-                    <span style={s('background:#EAF7FD; color:#25ADE3; padding:3px 8px; border-radius:4px; font-weight:600;')}>{r.ethnic}</span>
-                  </td>
-                  <td style={s('padding:12px 16px;')}>
-                    {r.literate ? <span style={s('color:#1E9E6A;')}>✅ Có</span> : <span style={s('color:#E23D3D;')}>❌ Không (Chỉ gọi)</span>}
-                  </td>
-                  <td style={s('padding:12px 16px; text-align:right;')}>
-                    <button onClick={() => openModal(r)} style={s('background:none; border:none; color:#25ADE3; cursor:pointer; font-weight:600; margin-right:12px;')}>Sửa</button>
-                    <button onClick={() => handleDelete(r.id)} style={s('background:none; border:none; color:#E23D3D; cursor:pointer; font-weight:600;')}>Xóa</button>
-                  </td>
-                </tr>
-              ))
-            )}
+            {isLoading ? <tr><td colSpan={5} style={s('padding:16px; text-align:center;')}>Đang tải...</td></tr> : 
+             (data?.data || []).map(r => (
+              <tr key={r.id} style={s('border-bottom:1px solid #F1F5F9;')}>
+                <td style={s('padding:12px 16px;')}>{r.name}</td>
+                <td style={s('padding:12px 16px;')}>{r.phone}</td>
+                <td style={s('padding:12px 16px;')}>{r.ethnic}</td>
+                <td style={s('padding:12px 16px;')}>{r.literate ? 'Có' : 'Không'}</td>
+                <td style={s('padding:12px 16px; display:flex; gap:8px;')}>
+                  <button onClick={() => openModal(r)} style={s('padding:4px 8px; border-radius:4px; border:1px solid #E1E7EE; cursor:pointer;')}>Sửa</button>
+                  <button onClick={() => handleDelete(r.id)} style={s('padding:4px 8px; border-radius:4px; border:1px solid #FECDD3; color:#E11D48; cursor:pointer;')}>Xóa</button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
+      {/* Pagination */}
+      <div style={s('display:flex; justify-content:space-between; align-items:center; margin-top:20px;')}>
+        <button disabled={page === 1} onClick={() => setPage(p => p - 1)} style={s('padding:8px 16px; border-radius:8px; border:1px solid #E1E7EE; cursor:pointer; background:#fff;')}>Trước</button>
+        <span style={s('font-size:14px; color:#64748B;')}>Trang {page} / {totalPages}</span>
+        <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} style={s('padding:8px 16px; border-radius:8px; border:1px solid #E1E7EE; cursor:pointer; background:#fff;')}>Sau</button>
+      </div>
+
       {/* Modal */}
       {isModalOpen && (
-        <div style={s('position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,30,42,.6); display:flex; align-items:center; justify-content:center; z-index:1000;')}>
-          <div style={s('background:#fff; width:400px; border-radius:14px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.15);')}>
-            <div style={s('padding:18px 24px; border-bottom:1px solid #EEF2F6; font-size:16px; font-weight:700;')}>
-              {editingId ? 'Sửa thông tin' : 'Thêm mới hộ dân'}
+        <div style={s('position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:100;')}>
+          <div style={s('background:#fff; padding:24px; border-radius:12px; width:400px;')}>
+            <h3 style={s('margin-top:0; margin-bottom:20px; color:#0F1E2A;')}>{editingId ? 'Sửa Cư dân' : 'Thêm Cư dân'}</h3>
+            <div style={s('display:flex; flex-direction:column; gap:12px; margin-bottom:20px;')}>
+              <input type="text" placeholder="Họ tên" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={s('padding:8px 12px; border-radius:8px; border:1px solid #E1E7EE; outline:none;')} />
+              <input type="text" placeholder="Số điện thoại" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} style={s('padding:8px 12px; border-radius:8px; border:1px solid #E1E7EE; outline:none;')} />
+              <select value={formData.ethnic} onChange={e => setFormData({...formData, ethnic: e.target.value})} style={s('padding:8px 12px; border-radius:8px; border:1px solid #E1E7EE; outline:none;')}>
+                <option value="Kinh">Kinh</option>
+                <option value="Thái">Thái</option>
+                <option value="Mông">Mông</option>
+                <option value="Khơ Mú">Khơ Mú</option>
+                <option value="Dao">Dao</option>
+              </select>
+              <label style={s('display:flex; align-items:center; gap:8px;')}>
+                <input type="checkbox" checked={formData.literate} onChange={e => setFormData({...formData, literate: e.target.checked})} />
+                Biết chữ
+              </label>
             </div>
-            <div style={s('padding:24px; display:flex; flex-direction:column; gap:16px;')}>
-              <div>
-                <label style={s('display:block; font-size:12px; font-weight:600; margin-bottom:6px;')}>Họ tên <span style={{color:'red'}}>*</span></label>
-                <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nguyễn Văn A" style={s('width:100%; height:40px; border:1px solid #E1E7EE; border-radius:8px; padding:0 12px; outline:none; font-family:inherit; box-sizing:border-box;')} />
-              </div>
-              <div>
-                <label style={s('display:block; font-size:12px; font-weight:600; margin-bottom:6px;')}>Số điện thoại <span style={{color:'red'}}>*</span></label>
-                <input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="0912345678" style={s('width:100%; height:40px; border:1px solid #E1E7EE; border-radius:8px; padding:0 12px; outline:none; font-family:inherit; box-sizing:border-box;')} />
-              </div>
-              <div>
-                <label style={s('display:block; font-size:12px; font-weight:600; margin-bottom:6px;')}>Dân tộc <span style={{color:'red'}}>*</span></label>
-                <select value={formData.ethnic} onChange={e => setFormData({...formData, ethnic: e.target.value})} style={s('width:100%; height:40px; border:1px solid #E1E7EE; border-radius:8px; padding:0 12px; outline:none; font-family:inherit; box-sizing:border-box;')}>
-                  <option value="Kinh">Kinh</option>
-                  <option value="Thái">Thái</option>
-                  <option value="Mông">Mông (H'Mông)</option>
-                  <option value="Khơ Mú">Khơ Mú</option>
-                  <option value="Dao">Dao</option>
-                </select>
-              </div>
-              <div style={s('display:flex; align-items:center; gap:8px; margin-top:8px;')}>
-                <input type="checkbox" id="literate" checked={formData.literate} onChange={e => setFormData({...formData, literate: e.target.checked})} />
-                <label htmlFor="literate" style={s('font-size:13px; cursor:pointer;')}>Hộ dân có người biết đọc tiếng phổ thông (Để nhận SMS thay vì gọi điện)</label>
-              </div>
-            </div>
-            <div style={s('padding:16px 24px; background:#F7F9FB; border-top:1px solid #EEF2F6; display:flex; justify-content:flex-end; gap:10px;')}>
-              <button onClick={() => setIsModalOpen(false)} style={s('padding:8px 16px; border-radius:8px; background:#fff; border:1px solid #E1E7EE; cursor:pointer; font-weight:600;')}>Hủy</button>
-              <button onClick={handleSave} style={s('padding:8px 16px; border-radius:8px; background:#1E9E6A; border:none; color:#fff; cursor:pointer; font-weight:600;')}>Lưu dữ liệu</button>
+            <div style={s('display:flex; justify-content:flex-end; gap:10px;')}>
+              <button onClick={() => setIsModalOpen(false)} style={s('padding:8px 16px; border-radius:8px; border:1px solid #E1E7EE; background:#fff; cursor:pointer;')}>Hủy</button>
+              <button onClick={handleSave} style={s('padding:8px 16px; border-radius:8px; background:#0EA5E9; border:none; color:#fff; cursor:pointer;')}>Lưu</button>
             </div>
           </div>
         </div>

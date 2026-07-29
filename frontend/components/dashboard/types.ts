@@ -93,9 +93,11 @@ export interface DashboardData {
   policyActive: number;
   policyExpiring: number;
   policyExpired: number;
+  predictions?: any[];
 }
 
 export interface Hamlet {
+  id: number;
   name: string;
   headman: string;
   rateStr: string;

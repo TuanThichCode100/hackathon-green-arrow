@@ -36,6 +36,7 @@ export const statusOf = (c, emergency) => (emergency ? c.alertStatus : 'safe');
 export const statusMeta = (st) => {
   if (st === 'alert') return { label: 'Cảnh báo', color: '#E23D3D', bg: '#FDECEC' };
   if (st === 'watch') return { label: 'Theo dõi', color: '#B9832B', bg: '#FFF6E6' };
+  if (st === 'unverified') return { label: 'Chưa xác thực', color: '#64748B', bg: '#F1F5F9' };
   return { label: 'An toàn', color: '#1E9E6A', bg: '#E7F6EF' };
 };
 export const rateColor = (r) => (r >= 0.9 ? '#1E9E6A' : r >= 0.7 ? '#E8A93B' : '#E23D3D');
@@ -169,6 +170,7 @@ export function buildModel(emergency, timeRange) {
   return {
     kpis, communes, channels, ethnics, activities, policies, logs,
     alertCount, alertHeadline,
+    predictions: [],
     timeText: TIME_META[timeRange].text,
     policyActive: polBase.filter((p) => p.status === 'active').length,
     policyExpiring: polBase.filter((p) => p.status === 'expiring').length,

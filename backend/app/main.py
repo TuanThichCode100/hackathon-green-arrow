@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.core.database import init_db
+from app.core.database import check_database_connection
 from app.core.scheduler import start_scheduler
 
 # Import routers safely
@@ -27,25 +27,18 @@ try:
     routers.append(docs_router)
     from app.modules.disaster_types.router import router as disaster_router
     routers.append(disaster_router)
+    from app.modules.users.router import router as users_router
+    routers.append(users_router)
 except ImportError as e:
     print(f"Warning: A router could not be imported. {e}")
 
-from app.core.seed import seed_database
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    
-    from app.core.database import SessionLocal
-    db = SessionLocal()
-    try:
-        seed_database(db)
-    finally:
-        db.close()
-        
-    scheduler = start_scheduler()
+    database_available = check_database_connection()
+    scheduler = start_scheduler() if database_available else None
     yield
-    scheduler.shutdown()
+    if scheduler:
+        scheduler.shutdown()
 
 app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
@@ -63,3 +56,14 @@ for r in routers:
 @app.get("/")
 def root():
     return {"message": "GreenForecast API is running"}
+
+
+@app.get("/health")
+def health():
+    database_available = check_database_connection()
+    return {
+        "status": "healthy" if database_available else "degraded",
+        "api": "available",
+        "database": "available" if database_available else "unavailable",
+        "schema": "managed_by_alembic",
+    }

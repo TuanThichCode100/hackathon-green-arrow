@@ -1,44 +1,47 @@
 import httpx
-from fastapi import Header, HTTPException, Depends, Request
+from fastapi import HTTPException, Depends, Request
 
-SUPABASE_URL = "https://qunzkuxuduqmqyjvtuqf.supabase.co"
-ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1bnprdXh1ZHVxbXF5anZ0dXFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzOTk3NTcsImV4cCI6MjA5OTk3NTc1N30.H1toe-UChtLQE88ZdvsvvyftQ8EBGT8hTlKczFhQAdI"
+from app.core.config import settings
 
-def verify_supabase_token(token: str):
+def verify_supabase_token_online(token: str):
+    """Verify the user session with Supabase without storing a local JWT signing secret."""
     try:
         resp = httpx.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={"Authorization": f"Bearer {token}", "apikey": ANON_KEY},
+            f"{settings.SUPABASE_URL}/auth/v1/user",
+            headers={"Authorization": f"Bearer {token}", "apikey": settings.supabase_api_key},
             timeout=5.0
         )
         if resp.status_code == 200:
             user = resp.json()
-            return user.get("user_metadata", {}).get("role", "tinh")
+            return user
     except Exception:
         pass
     return None
 
-def get_current_user_role(request: Request):
+def get_current_user_metadata(request: Request):
+    """Resolve the authenticated user's metadata from a Supabase access token."""
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        # For Hackathon testing: if no token, allow bypass with default role
-        return "tinh"
+        raise HTTPException(status_code=401, detail="Unauthorized: Missing or invalid token format")
     
     token = auth_header.split(" ")[1]
     
-    # Optional: We could skip verification if it's the mock 'demo' token
-    if token == "mock-jwt-token":
-        return "tinh"
-        
-    role = verify_supabase_token(token)
-    if role:
-        return role
-        
-    raise HTTPException(status_code=401, detail="Invalid or expired token")
+    user = verify_supabase_token_online(token)
+    if user:
+        meta = user.get("user_metadata", {})
+        return {"role": meta.get("role", "tinh"), "commune_id": meta.get("commune_id"), "sub": user.get("id")}
+    raise HTTPException(status_code=401, detail="Unauthorized: Invalid or expired token")
+
+def get_current_user_role(metadata: dict = Depends(get_current_user_metadata)):
+    return metadata.get("role")
 
 def require_role(allowed_roles: list[str]):
-    def role_checker(role: str = Depends(get_current_user_role)):
+    """
+    Lớp bảo mật 3: Role-based Access Control (RBAC)
+    """
+    def role_checker(metadata: dict = Depends(get_current_user_metadata)):
+        role = metadata.get("role")
         if role not in allowed_roles:
-            raise HTTPException(status_code=403, detail="Forbidden: Insufficient role")
-        return role
+            raise HTTPException(status_code=403, detail="Forbidden: Insufficient permissions")
+        return metadata
     return role_checker

@@ -1,0 +1,241 @@
+- generic [ref=e1]:
+  - alert [ref=e5]
+  - generic [ref=e461]:
+    - complementary [ref=e462]:
+      - generic [ref=e467]:
+        - strong [ref=e468]: GreenForecast
+        - generic [ref=e469]: Điều hành cảnh báo Điện Biên
+      - navigation "Điều hướng chính" [ref=e470]:
+        - button "Bản đồ rủi ro" [ref=e471] [cursor=pointer]
+        - button "Tổng quan" [ref=e475] [cursor=pointer]
+        - button "Địa bàn" [ref=e479] [cursor=pointer]
+        - button "Phân phối" [ref=e483] [cursor=pointer]
+        - button "Văn bản chỉ đạo" [ref=e487] [cursor=pointer]
+        - button "Dữ liệu dân cư" [ref=e491] [cursor=pointer]
+        - button "Phân quyền" [ref=e495] [cursor=pointer]
+      - generic [ref=e501]:
+        - generic [ref=e502]:
+          - generic [ref=e503]: Giám sát thường trực
+          - generic [ref=e504]: Dữ liệu được theo dõi liên tục
+        - button "Chuyển chế độ khẩn cấp" [ref=e505] [cursor=pointer]
+      - generic [ref=e506]:
+        - generic [ref=e507]: CÁ
+        - generic [ref=e508]:
+          - strong [ref=e509]: Cán bộ Điện Biên
+          - generic [ref=e510]: Cán bộ tỉnh
+        - button "Đăng xuất" [ref=e511] [cursor=pointer]
+    - generic [ref=e514]:
+      - generic [ref=e515]:
+        - generic [ref=e516]:
+          - paragraph [ref=e517]: Tỉnh Điện Biên
+          - heading "Bản đồ rủi ro" [level=1] [ref=e518]
+        - generic "Khoảng thời gian" [ref=e519]:
+          - button "Hôm nay" [ref=e520] [cursor=pointer]
+          - button "24 giờ" [ref=e521] [cursor=pointer]
+          - button "7 ngày" [ref=e522] [cursor=pointer]
+          - button "30 ngày" [ref=e523] [cursor=pointer]
+        - generic [ref=e524]:
+          - text: Đồng bộ
+          - generic [ref=e528]: 19:12:05
+        - button "Thông báo" [ref=e529] [cursor=pointer]
+      - main [ref=e532]:
+        - generic [ref=e533]:
+          - region "Bản đồ phân vùng rủi ro tỉnh Điện Biên" [ref=e534]:
+            - generic [ref=e806]:
+              - button "Zoom in" [ref=e807] [cursor=pointer]: +
+              - button "Zoom out" [ref=e808] [cursor=pointer]: −
+            - generic [ref=e584]:
+              - strong [ref=e587]: 45 xã, phường Điện Biên · địa giới 2025
+              - button "Hiển thị toàn tỉnh" [ref=e588] [cursor=pointer]
+            - generic [ref=e591]: Ranh giới tham chiếu được hợp nhất từ GADM 4.1 theo Nghị quyết 1661/NQ-UBTVQH15, hiệu lực từ 01/07/2025. Màu rủi ro hiện là dữ liệu mô phỏng, không phải cảnh báo chính thức.
+          - complementary [ref=e592]:
+            - generic [ref=e593]:
+              - text: Giám sát thường trực
+              - heading "Búng Lao" [level=2] [ref=e809]
+              - generic [ref=e595]:
+                - generic [ref=e596]:
+                  - generic [ref=e597]: Cảnh báo
+                  - strong [ref=e598]: "0"
+                - generic [ref=e599]:
+                  - generic [ref=e600]: Theo dõi
+                  - strong [ref=e601]: "0"
+              - generic [ref=e602]:
+                - generic [ref=e603]:
+                  - generic [ref=e605]: An toàn
+                  - generic [ref=e606]: Ổn định
+                - generic [ref=e607]:
+                  - generic [ref=e609]: Theo dõi
+                  - generic [ref=e610]: Cần quan sát
+                - generic [ref=e611]:
+                  - generic [ref=e613]: Cảnh báo
+                  - generic [ref=e614]: Ưu tiên xử lý
+            - generic [ref=e615]: Địa bàn ưu tiên
+            - generic [ref=e616]:
+              - button "Búng Lao xã mới từ 01/07/2025 98% An toàn" [active] [ref=e617] [cursor=pointer]:
+                - generic [ref=e618]:
+                  - strong [ref=e619]: Búng Lao
+                  - generic [ref=e620]: xã mới từ 01/07/2025
+                - generic [ref=e621]:
+                  - text: 98%
+                  - generic [ref=e622]: An toàn
+              - button "Chà Tở xã mới từ 01/07/2025 97% An toàn" [ref=e623] [cursor=pointer]:
+                - generic [ref=e624]:
+                  - strong [ref=e625]: Chà Tở
+                  - generic [ref=e626]: xã mới từ 01/07/2025
+                - generic [ref=e627]:
+                  - text: 97%
+                  - generic [ref=e628]: An toàn
+              - button "Chiềng Sinh xã mới từ 01/07/2025 95% An toàn" [ref=e629] [cursor=pointer]:
+                - generic [ref=e630]:
+                  - strong [ref=e631]: Chiềng Sinh
+                  - generic [ref=e632]: xã mới từ 01/07/2025
+                - generic [ref=e633]:
+                  - text: 95%
+                  - generic [ref=e634]: An toàn
+              - button "Điện Biên Phủ phường mới từ 01/07/2025 96% An toàn" [ref=e635] [cursor=pointer]:
+                - generic [ref=e636]:
+                  - strong [ref=e637]: Điện Biên Phủ
+                  - generic [ref=e638]: phường mới từ 01/07/2025
+                - generic [ref=e639]:
+                  - text: 96%
+                  - generic [ref=e640]: An toàn
+              - button "Mường Ảng xã mới từ 01/07/2025 99% An toàn" [ref=e641] [cursor=pointer]:
+                - generic [ref=e642]:
+                  - strong [ref=e643]: Mường Ảng
+                  - generic [ref=e644]: xã mới từ 01/07/2025
+                - generic [ref=e645]:
+                  - text: 99%
+                  - generic [ref=e646]: An toàn
+              - button "Mường Chà xã mới từ 01/07/2025 99% An toàn" [ref=e647] [cursor=pointer]:
+                - generic [ref=e648]:
+                  - strong [ref=e649]: Mường Chà
+                  - generic [ref=e650]: xã mới từ 01/07/2025
+                - generic [ref=e651]:
+                  - text: 99%
+                  - generic [ref=e652]: An toàn
+              - button "Mường Lạn xã mới từ 01/07/2025 99% An toàn" [ref=e653] [cursor=pointer]:
+                - generic [ref=e654]:
+                  - strong [ref=e655]: Mường Lạn
+                  - generic [ref=e656]: xã mới từ 01/07/2025
+                - generic [ref=e657]:
+                  - text: 99%
+                  - generic [ref=e658]: An toàn
+              - button "Mường Lay phường mới từ 01/07/2025 98% An toàn" [ref=e659] [cursor=pointer]:
+                - generic [ref=e660]:
+                  - strong [ref=e661]: Mường Lay
+                  - generic [ref=e662]: phường mới từ 01/07/2025
+                - generic [ref=e663]:
+                  - text: 98%
+                  - generic [ref=e664]: An toàn
+              - button "Mường Luân xã mới từ 01/07/2025 98% An toàn" [ref=e665] [cursor=pointer]:
+                - generic [ref=e666]:
+                  - strong [ref=e667]: Mường Luân
+                  - generic [ref=e668]: xã mới từ 01/07/2025
+                - generic [ref=e669]:
+                  - text: 98%
+                  - generic [ref=e670]: An toàn
+              - button "Mường Mùn xã mới từ 01/07/2025 99% An toàn" [ref=e671] [cursor=pointer]:
+                - generic [ref=e672]:
+                  - strong [ref=e673]: Mường Mùn
+                  - generic [ref=e674]: xã mới từ 01/07/2025
+                - generic [ref=e675]:
+                  - text: 99%
+                  - generic [ref=e676]: An toàn
+              - button "Mường Nhà xã mới từ 01/07/2025 94% An toàn" [ref=e677] [cursor=pointer]:
+                - generic [ref=e678]:
+                  - strong [ref=e679]: Mường Nhà
+                  - generic [ref=e680]: xã mới từ 01/07/2025
+                - generic [ref=e681]:
+                  - text: 94%
+                  - generic [ref=e682]: An toàn
+              - button "Mường Nhé xã mới từ 01/07/2025 98% An toàn" [ref=e683] [cursor=pointer]:
+                - generic [ref=e684]:
+                  - strong [ref=e685]: Mường Nhé
+                  - generic [ref=e686]: xã mới từ 01/07/2025
+                - generic [ref=e687]:
+                  - text: 98%
+                  - generic [ref=e688]: An toàn
+              - button "Mường Phăng xã mới từ 01/07/2025 94% An toàn" [ref=e689] [cursor=pointer]:
+                - generic [ref=e690]:
+                  - strong [ref=e691]: Mường Phăng
+                  - generic [ref=e692]: xã mới từ 01/07/2025
+                - generic [ref=e693]:
+                  - text: 94%
+                  - generic [ref=e694]: An toàn
+              - button "Mường Pồn xã mới từ 01/07/2025 97% An toàn" [ref=e695] [cursor=pointer]:
+                - generic [ref=e696]:
+                  - strong [ref=e697]: Mường Pồn
+                  - generic [ref=e698]: xã mới từ 01/07/2025
+                - generic [ref=e699]:
+                  - text: 97%
+                  - generic [ref=e700]: An toàn
+              - button "Mường Thanh phường mới từ 01/07/2025 97% An toàn" [ref=e701] [cursor=pointer]:
+                - generic [ref=e702]:
+                  - strong [ref=e703]: Mường Thanh
+                  - generic [ref=e704]: phường mới từ 01/07/2025
+                - generic [ref=e705]:
+                  - text: 97%
+                  - generic [ref=e706]: An toàn
+              - button "Mường Toong xã mới từ 01/07/2025 97% An toàn" [ref=e707] [cursor=pointer]:
+                - generic [ref=e708]:
+                  - strong [ref=e709]: Mường Toong
+                  - generic [ref=e710]: xã mới từ 01/07/2025
+                - generic [ref=e711]:
+                  - text: 97%
+                  - generic [ref=e712]: An toàn
+              - button "Mường Tùng xã mới từ 01/07/2025 94% An toàn" [ref=e713] [cursor=pointer]:
+                - generic [ref=e714]:
+                  - strong [ref=e715]: Mường Tùng
+                  - generic [ref=e716]: xã mới từ 01/07/2025
+                - generic [ref=e717]:
+                  - text: 94%
+                  - generic [ref=e718]: An toàn
+              - button "Nà Bủng xã mới từ 01/07/2025 96% An toàn" [ref=e719] [cursor=pointer]:
+                - generic [ref=e720]:
+                  - strong [ref=e721]: Nà Bủng
+                  - generic [ref=e722]: xã mới từ 01/07/2025
+                - generic [ref=e723]:
+                  - text: 96%
+                  - generic [ref=e724]: An toàn
+              - button "Nà Hỳ xã mới từ 01/07/2025 94% An toàn" [ref=e725] [cursor=pointer]:
+                - generic [ref=e726]:
+                  - strong [ref=e727]: Nà Hỳ
+                  - generic [ref=e728]: xã mới từ 01/07/2025
+                - generic [ref=e729]:
+                  - text: 94%
+                  - generic [ref=e730]: An toàn
+              - button "Na Sang xã mới từ 01/07/2025 99% An toàn" [ref=e731] [cursor=pointer]:
+                - generic [ref=e732]:
+                  - strong [ref=e733]: Na Sang
+                  - generic [ref=e734]: xã mới từ 01/07/2025
+                - generic [ref=e735]:
+                  - text: 99%
+                  - generic [ref=e736]: An toàn
+              - button "Na Son xã mới từ 01/07/2025 95% An toàn" [ref=e737] [cursor=pointer]:
+                - generic [ref=e738]:
+                  - strong [ref=e739]: Na Son
+                  - generic [ref=e740]: xã mới từ 01/07/2025
+                - generic [ref=e741]:
+                  - text: 95%
+                  - generic [ref=e742]: An toàn
+              - button "Nà Tấu xã mới từ 01/07/2025 97% An toàn" [ref=e743] [cursor=pointer]:
+                - generic [ref=e744]:
+                  - strong [ref=e745]: Nà Tấu
+                  - generic [ref=e746]: xã mới từ 01/07/2025
+                - generic [ref=e747]:
+                  - text: 97%
+                  - generic [ref=e748]: An toàn
+              - button "Nậm Kè xã mới từ 01/07/2025 98% An toàn" [ref=e749] [cursor=pointer]:
+                - generic [ref=e750]:
+                  - strong [ref=e751]: Nậm Kè
+                  - generic [ref=e752]: xã mới từ 01/07/2025
+                - generic [ref=e753]:
+                  - text: 98%
+                  - generic [ref=e754]: An toàn
+              - button "Nậm Nèn xã mới từ 01/07/2025 96% An toàn" [ref=e755] [cursor=pointer]:
+                - generic [ref=e756]:
+                  - strong [ref=e757]: Nậm Nèn
+                  - generic [ref=e758]: xã mới từ 01/07/2025
+                - generic [ref=e759]:
+                  - text: 96%
+                  - generic [ref=e760]: An toàn

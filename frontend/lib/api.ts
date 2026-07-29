@@ -1,6 +1,7 @@
 import useSWR from 'swr';
 import { useMemo } from 'react';
-import { TIME_META, statusMeta, rateColor, pill, fmt, statusOf, buildModel } from './data';
+import { TIME_META, statusMeta, rateColor, pill, fmt } from './data';
+import type { DashboardData } from '@/components/dashboard/types';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -14,47 +15,55 @@ const fetcher = async (url) => {
 };
 
 // Hook for Map & Overview
-export function useDashboardData(emergency, timeRange) {
+type DashboardDataResult = {
+  data: DashboardData | null;
+  isLoading: boolean;
+  isError: boolean;
+};
+
+const emptyDashboard = (timeRange: string): DashboardData => ({
+  kpis: [], communes: [], channels: [], ethnics: [], activities: [], policies: [], logs: [],
+  alertCount: 0, alertHeadline: '', timeText: TIME_META[timeRange].text,
+  policyActive: 0, policyExpiring: 0, policyExpired: 0, predictions: [],
+});
+
+export function useDashboardData(emergency: boolean, timeRange: string): DashboardDataResult {
+  const hasToken = typeof window !== 'undefined' ? !!localStorage.getItem('auth_token') : false;
   const { data: communesData, error: communesErr } = useSWR(`${API_BASE_URL}/api/communes`, fetcher);
-  const { data: policiesData } = useSWR(`${API_BASE_URL}/api/documents`, fetcher);
+  const { data: policiesData } = useSWR(hasToken ? `${API_BASE_URL}/api/documents` : null, fetcher);
   const { data: overviewData } = useSWR(`${API_BASE_URL}/api/stats/overview?time_range=${timeRange}`, fetcher);
   const { data: channelsData } = useSWR(`${API_BASE_URL}/api/stats/channels?time_range=${timeRange}`, fetcher);
   const { data: ethnicsData } = useSWR(`${API_BASE_URL}/api/stats/ethnics`, fetcher);
   const { data: activitiesData } = useSWR(`${API_BASE_URL}/api/stats/activities?limit=10`, fetcher);
   const { data: predictionsData } = useSWR(`${API_BASE_URL}/api/predictions/latest`, fetcher);
-  const { data: notificationsData } = useSWR(`${API_BASE_URL}/api/notifications`, fetcher);
+  const { data: notificationsData } = useSWR(hasToken ? `${API_BASE_URL}/api/notifications` : null, fetcher);
 
-  const isLoading = !communesData;
-  const isError = communesErr;
+  const isLoading = !communesData && !communesErr;
+  const isError = Boolean(communesErr);
 
   const ov = overviewData || {};
-  const globalRate = ov.recv_rate !== undefined ? ov.recv_rate : (emergency ? 0.6 : 0.98);
 
   const communes = useMemo(() => {
     if (!communesData) return [];
     return communesData.map((c) => {
-      const st = emergency ? (c.alert_status || 'alert') : 'safe';
+      const st = c.alert_status || 'unverified';
       const meta = statusMeta(st);
+      const rate = typeof c.recv_rate === 'number' ? Math.max(0, Math.min(1, c.recv_rate)) : null;
       
-      // Use real recv_rate if commune has it, else use global DB rate with slight variation
-      const randomJitter = ((c.id % 11) - 5) / 100; // -0.05 to +0.05
-      let rate = c.recv_rate !== undefined ? c.recv_rate : (globalRate + randomJitter);
-      rate = Math.max(0, Math.min(1, rate)); // clamp 0-1
-      
-      const received = Math.round(c.population * rate);
-      const notReceived = c.population - received;
+      const received = rate === null ? null : Math.round(c.population * rate);
+      const notReceived = rate === null ? null : c.population - received;
       
       return {
         id: c.id, 
         name: c.name, 
-        icon: c.disaster_icon || (emergency ? '🌊' : '🟢'), 
-        hazard: c.disaster_type || (emergency ? 'Lũ quét' : 'Không có cảnh báo'),
+        icon: c.disaster_icon || '•', 
+        hazard: c.disaster_type || 'Chưa xác thực',
         popStr: fmt(c.population), 
-        receivedStr: fmt(received), 
-        notReceivedStr: fmt(notReceived),
-        notReceivedColor: notReceived > c.population * 0.15 ? '#E23D3D' : '#5A6675',
-        rateStr: Math.round(rate * 100) + '%', 
-        rateColor: rateColor(rate),
+        receivedStr: received === null ? '—' : fmt(received), 
+        notReceivedStr: notReceived === null ? '—' : fmt(notReceived),
+        notReceivedColor: '#5A6675',
+        rateStr: rate === null ? '—' : Math.round(rate * 100) + '%', 
+        rateColor: rate === null ? '#64748B' : rateColor(rate),
         statusLabel: meta.label, 
         pillStyle: pill(meta.color, meta.bg),
         lat: c.lat,
@@ -64,9 +73,7 @@ export function useDashboardData(emergency, timeRange) {
     });
   }, [communesData, emergency]);
 
-  if (isError) {
-    return { data: buildModel(emergency, timeRange), isLoading: false, isError: false, isFallback: true };
-  }
+  if (isError) return { data: emptyDashboard(timeRange), isLoading: false, isError: true };
 
   if (isLoading) {
     return { data: null, isLoading: true, isError: false };
@@ -162,6 +169,7 @@ export function useDashboardData(emergency, timeRange) {
       policyActive: policies.filter(p => p.status === 'active').length,
       policyExpiring: 0,
       policyExpired: policies.filter(p => p.status !== 'active').length,
+      predictions: predictionsData,
     },
     isLoading: false,
     isError: false
@@ -185,6 +193,7 @@ export function useDetailData(id, emergency) {
     const hr = Math.min(1, Math.max(0.3, rate + (i % 2 === 0 ? 0.04 : -0.06)));
     const confirmed = !emergency || hr >= 0.75;
     return { 
+      id: h.id,
       name: h.name, 
       headman: h.headman_name || 'Đang cập nhật', 
       rateStr: Math.round(hr * 100) + '%', 
@@ -222,11 +231,12 @@ export function useDetailData(id, emergency) {
 
 // Residents Hooks
 export function useResidents(communeId, ethnic, page, limit = 50) {
+  const hasToken = typeof window !== 'undefined' ? !!localStorage.getItem('auth_token') : false;
   let url = `${API_BASE_URL}/api/residents?page=${page}&limit=${limit}`;
   if (communeId) url += `&commune_id=${communeId}`;
   if (ethnic) url += `&ethnic=${encodeURIComponent(ethnic)}`;
 
-  const { data, error, isLoading, mutate } = useSWR(url, fetcher);
+  const { data, error, isLoading, mutate } = useSWR(hasToken ? url : null, fetcher);
   return {
     data: data,
     isLoading,

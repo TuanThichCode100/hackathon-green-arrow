@@ -7,7 +7,7 @@ interface Props {
   showToast: (message: string, icon?: string) => void;
   user: User | null;
   onLoginRequest: () => void;
-  handleAction: (action: string, communeId: string | number, hamletName: string) => void;
+  handleAction: (action: string, communeId: string | number, hamletId: number, hamletName: string) => void;
 }
 
 export default function CommuneDetailSlideOver({ detail, setDetailId, user, onLoginRequest, handleAction }: Props) {
@@ -32,7 +32,7 @@ export default function CommuneDetailSlideOver({ detail, setDetailId, user, onLo
                 <div className="bar-meta"><div><strong>{hamlet.name}</strong><span className="metric-label">{hamlet.headman} · {hamlet.confirmLabel}</span></div><strong className="mono">{hamlet.rateStr}</strong></div>
                 <div className="bar-track"><div className="bar-fill" style={{ width: hamlet.rateStr }} /></div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  {user ? <><button className="secondary-button" onClick={() => handleAction('resend', detail.id, hamlet.name)}><ArrowClockwise size={16} />Gửi lại</button><button className="secondary-button" onClick={() => handleAction('call', detail.id, hamlet.name)}><PhoneCall size={16} />Gọi</button></> : <button className="secondary-button" onClick={onLoginRequest}><SignIn size={16} />Đăng nhập để thao tác</button>}
+                  {user ? <><button className="secondary-button" onClick={() => handleAction('resend', detail.id, hamlet.id, hamlet.name)}><ArrowClockwise size={16} />Gửi lại</button><button className="secondary-button" onClick={() => handleAction('call', detail.id, hamlet.id, hamlet.name)}><PhoneCall size={16} />Gọi</button></> : <button className="secondary-button" onClick={onLoginRequest}><SignIn size={16} />Đăng nhập để thao tác</button>}
                 </div>
               </div>
             ))}

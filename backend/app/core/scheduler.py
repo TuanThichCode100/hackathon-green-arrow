@@ -1,7 +1,7 @@
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.external.open_meteo import OpenMeteoClient
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, check_database_connection
 from app.modules.predictions.models import Prediction
 
 logger = logging.getLogger(__name__)
@@ -17,14 +17,13 @@ async def fetch_weather_task():
         logger.info(f"Current rain in Dien Bien: {rain} mm")
         
         # Nếu lượng mưa > 10mm thì lưu dự báo nguy cơ (ví dụ mô phỏng)
-        if rain > 10.0:
+        if rain > 10.0 and check_database_connection():
             db = SessionLocal()
             try:
                 pred = Prediction(
                     commune_id=1,  # Giả sử gán tạm cho 1 xã trung tâm
                     disaster_type="Mưa lớn",
                     probability=0.85,
-                    details=f"Lượng mưa vượt ngưỡng: {rain}mm",
                     severity="alert"
                 )
                 db.add(pred)

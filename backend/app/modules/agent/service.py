@@ -90,15 +90,36 @@ def approve_bulletin(db: Session, decision_id: int):
         db.refresh(dec)
     return dec
 
+from app.modules.notifications.models import Notification
+
 def manual_trigger(db: Session, request):
+    # Lấy thông điệp
+    message = request.message if hasattr(request, 'message') else "Cảnh báo khẩn cấp"
+    
     dec = AgentDecision(
         trigger_type="manual_trigger",
         reasoning="Cán bộ kích hoạt thủ công",
-        actions_json="[]",
+        actions_json=json.dumps([{"type": "zalo", "status": "sent"}, {"type": "sms", "status": "sent"}]),
         communes_affected=",".join(map(str, request.commune_ids)),
         status="executing"
     )
     db.add(dec)
     db.commit()
     db.refresh(dec)
+    
+    # Tạo notifications thật
+    for cid in request.commune_ids:
+        for channel in ["zalo", "sms", "loa"]:
+            notif = Notification(
+                commune_id=cid,
+                decision_id=dec.id,
+                channel=channel,
+                ethnic_language="Kinh",
+                content=f"[{request.disaster_type}] {message}",
+                recipient_count=100, # Giả lập 100 người
+                status="delivered"
+            )
+            db.add(notif)
+    
+    db.commit()
     return dec

@@ -1,22 +1,37 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from datetime import datetime, timedelta
 from app.modules.communes.models import Commune, Hamlet
 from app.modules.residents.models import Resident
 from app.modules.notifications.models import Notification
 from app.modules.agent.models import AgentDecision
 
+def get_start_date(time_range: str) -> datetime:
+    now = datetime.utcnow()
+    if time_range == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif time_range == "3days":
+        return now - timedelta(days=3)
+    elif time_range == "week":
+        return now - timedelta(days=7)
+    elif time_range == "month":
+        return now - timedelta(days=30)
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
 def calc_overview(db: Session, time_range: str):
+    start_date = get_start_date(time_range)
     total_pop = db.query(func.sum(Commune.population)).scalar() or 0
     
     # Calculate receive rate based on notifications.
-    # Total sent / Total population is a simplistic way for now.
-    sent_notifications = db.query(func.sum(Notification.recipient_count)).filter(Notification.status == 'delivered').scalar() or 0
+    sent_notifications = db.query(func.sum(Notification.recipient_count)).filter(
+        Notification.status == 'delivered',
+        Notification.sent_at >= start_date
+    ).scalar() or 0
+    
     recv_rate = min(1.0, sent_notifications / total_pop) if total_pop > 0 else 0
-
     not_responded = int(total_pop * (1 - recv_rate))
     
     headmen_total = db.query(func.count(Hamlet.id)).scalar() or 0
-    # Simulate confirmation rate based on receive rate
     headmen_confirmed = int(headmen_total * recv_rate)
     
     active_alerts = db.query(func.count(Commune.id)).filter(Commune.notification_status.in_(["sent", "delivered"])).scalar() or 0
@@ -31,13 +46,25 @@ def calc_overview(db: Session, time_range: str):
     }
 
 def calc_channel_stats(db: Session, time_range: str):
+    start_date = get_start_date(time_range)
     channels = ["zalo", "sms", "call"]
     stats = []
     
     for ch in channels:
-        sent = db.query(func.sum(Notification.recipient_count)).filter(Notification.channel == ch).scalar() or 0
-        delivered = db.query(func.sum(Notification.recipient_count)).filter(Notification.channel == ch, Notification.status == 'delivered').scalar() or 0
-        failed = db.query(func.sum(Notification.recipient_count)).filter(Notification.channel == ch, Notification.status == 'failed').scalar() or 0
+        sent = db.query(func.sum(Notification.recipient_count)).filter(
+            Notification.channel == ch,
+            Notification.sent_at >= start_date
+        ).scalar() or 0
+        delivered = db.query(func.sum(Notification.recipient_count)).filter(
+            Notification.channel == ch, 
+            Notification.status == 'delivered',
+            Notification.sent_at >= start_date
+        ).scalar() or 0
+        failed = db.query(func.sum(Notification.recipient_count)).filter(
+            Notification.channel == ch, 
+            Notification.status == 'failed',
+            Notification.sent_at >= start_date
+        ).scalar() or 0
         
         rate = delivered / sent if sent > 0 else 0
         
