@@ -30,6 +30,7 @@ export interface Commune {
   lat: number;
   lng: number;
   pop: number;
+  received?: number | null;
 }
 
 export interface Channel {

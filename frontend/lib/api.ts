@@ -5,6 +5,8 @@ import type { DashboardData } from '@/components/dashboard/types';
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+const finiteNumber = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
+
 const fetcher = async (url) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
   const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
@@ -48,17 +50,18 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
     return communesData.map((c) => {
       const st = c.alert_status || 'unverified';
       const meta = statusMeta(st);
-      const rate = typeof c.recv_rate === 'number' ? Math.max(0, Math.min(1, c.recv_rate)) : null;
+      const population = finiteNumber(c.population);
+      const rate = finiteNumber(c.recv_rate) === null ? null : Math.max(0, Math.min(1, c.recv_rate));
       
-      const received = rate === null ? null : Math.round(c.population * rate);
-      const notReceived = rate === null ? null : c.population - received;
+      const received = rate === null || population === null ? null : Math.round(population * rate);
+      const notReceived = received === null || population === null ? null : population - received;
       
       return {
         id: c.id, 
         name: c.name, 
         icon: c.disaster_icon || '•', 
         hazard: c.disaster_type || 'Chưa xác thực',
-        popStr: fmt(c.population), 
+        popStr: fmt(population), 
         receivedStr: received === null ? '—' : fmt(received), 
         notReceivedStr: notReceived === null ? '—' : fmt(notReceived),
         notReceivedColor: '#5A6675',
@@ -68,7 +71,8 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
         pillStyle: pill(meta.color, meta.bg),
         lat: c.lat,
         lng: c.lng,
-        pop: c.population
+        pop: population || 0,
+        received,
       };
     });
   }, [communesData, emergency]);
@@ -83,8 +87,8 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
   const tf = TIME_META[timeRange].factor;
 
   // Re-calculate KPIs based on API communes
-  const totalPop = communes.reduce((s, c) => s + c.pop, 0);
-  const totalRecv = communes.reduce((s, c) => s + parseInt(c.receivedStr.replace(/\./g, '')), 0);
+  const totalPop = communes.reduce((sum, commune) => sum + commune.pop, 0);
+  const totalRecv = communes.reduce((sum, commune) => sum + (commune.received || 0), 0);
   const totalNot = totalPop - totalRecv;
   const alertCount = communes.filter((c) => c.statusLabel === 'Cảnh báo').length;
   
@@ -95,17 +99,23 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
   const kpiCard = 'background:#fff; border:1px solid #E1E7EE; border-radius:14px; padding:15px 17px;';
   const kpiCardAlert = 'background:#fff; border:1px solid #F6C6C6; border-radius:14px; padding:15px 17px; box-shadow:0 0 0 1px #F6C6C6;';
   
-  const ovPop = ov.total_pop || totalPop;
-  const ovRecv = Math.round((ov.recv_rate || (totalRecv/totalPop)) * ovPop);
-  const ovNot = ov.not_responded || (ovPop - ovRecv);
-  const hConf = ov.headmen_confirmed || headmenConfirmed;
+  const overviewPopulation = finiteNumber(ov.total_pop);
+  const ovPop = overviewPopulation && overviewPopulation > 0 ? overviewPopulation : (totalPop > 0 ? totalPop : null);
+  const overviewRate = ovPop === null ? null : finiteNumber(ov.recv_rate);
+  const calculatedRate = ovPop && totalRecv >= 0 ? totalRecv / ovPop : null;
+  const recvRate = overviewRate ?? calculatedRate;
+  const ovRecv = ovPop !== null && recvRate !== null ? Math.round(Math.max(0, Math.min(1, recvRate)) * ovPop) : null;
+  const overviewNotResponded = finiteNumber(ov.not_responded);
+  const ovNot = overviewNotResponded ?? (ovPop !== null && ovRecv !== null ? Math.max(0, ovPop - ovRecv) : null);
+  const hConf = finiteNumber(ov.headmen_confirmed) ?? headmenConfirmed;
+  const hasHeadmenData = headmenTotal > 0;
   const aAct = ov.active_alerts !== undefined ? ov.active_alerts : alertCount;
 
   const kpis = [
-    { label: 'Dân số vùng ảnh hưởng', icon: '👥', value: fmt(ovPop), sub: 'trên ' + communes.length + ' xã/phường giám sát', cardStyle: kpiCard, valueColor: '#0F1E2A' },
-    { label: 'Đã nhận cảnh báo', icon: '✅', value: Math.round((ovRecv / (ovPop||1)) * 100) + '%', sub: fmt(ovRecv) + ' người', cardStyle: kpiCard, valueColor: '#1E9E6A' },
-    { label: 'Chưa phản hồi', icon: '⚠️', value: fmt(ovNot), sub: emergency ? 'cần cử lực lượng tiếp cận' : 'trong ngưỡng an toàn', cardStyle: emergency ? kpiCardAlert : kpiCard, valueColor: emergency ? '#E23D3D' : '#5A6675' },
-    { label: 'Trưởng bản xác nhận', icon: '📢', value: headmenConfirmed + '/' + headmenTotal, sub: 'đã nhận file Audio loa', cardStyle: kpiCard, valueColor: '#0F1E2A' },
+    { label: 'Dân số vùng ảnh hưởng', icon: '👥', value: fmt(ovPop), sub: communes.length ? 'trên ' + communes.length + ' xã/phường giám sát' : 'chưa có dữ liệu địa bàn', cardStyle: kpiCard, valueColor: '#0F1E2A' },
+    { label: 'Đã nhận cảnh báo', icon: '✅', value: ovPop && ovRecv !== null ? Math.round((ovRecv / ovPop) * 100) + '%' : '—', sub: ovRecv === null ? 'chưa có số liệu xác thực' : fmt(ovRecv) + ' người', cardStyle: kpiCard, valueColor: '#1E9E6A' },
+    { label: 'Chưa phản hồi', icon: '⚠️', value: fmt(ovNot), sub: ovNot === null ? 'chưa có số liệu xác thực' : emergency ? 'cần cử lực lượng tiếp cận' : 'trong ngưỡng an toàn', cardStyle: emergency ? kpiCardAlert : kpiCard, valueColor: emergency ? '#E23D3D' : '#5A6675' },
+    { label: 'Trưởng bản xác nhận', icon: '📢', value: hasHeadmenData ? hConf + '/' + headmenTotal : '—', sub: hasHeadmenData ? 'đã nhận file Audio loa' : 'chưa có số liệu xác thực', cardStyle: kpiCard, valueColor: '#0F1E2A' },
     { label: emergency ? 'Cảnh báo đang mở' : 'Trạng thái hệ thống', icon: emergency ? '🚨' : '🟢', value: emergency ? String(aAct) : 'Ổn định', sub: emergency ? 'xã ở mức Cảnh báo' : 'giám sát thường trực', cardStyle: emergency ? kpiCardAlert : kpiCard, valueColor: emergency ? '#E23D3D' : '#1E9E6A' },
   ];
 

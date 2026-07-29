@@ -154,3 +154,18 @@ Tài liệu này ghi lại toàn bộ các tính năng, module và kiến trúc 
 - Đưa nhận diện GreenForecast lên đầu màn hình riêng với logo và tên ứng dụng; header nội dung nằm bên dưới, không còn trộn với thanh điều hướng.
 - Dành khoảng đệm phía cuối app shell để nội dung không bị taskbar che khuất; duy trì `prefers-reduced-motion` và focus state hiện có.
 - Kiểm thử Playwright ở viewport 390 × 844: bottom navigation hiển thị đúng đáy màn hình và chuyển sang Tổng quan thành công.
+
+## Giai đoạn 12 — Rà soát và bàn giao kỹ thuật
+
+- Sửa phép tổng hợp dashboard khi Supabase chưa có dữ liệu: không còn phát sinh `NaN`; các KPI phụ thuộc dân số và trưởng bản hiển thị `—` cùng nhãn `chưa có số liệu xác thực` khi không có bản ghi nguồn.
+- Chuẩn hóa hàm định dạng số để giá trị không hợp lệ luôn hiển thị `—`, không lan truyền số giả vào UI.
+- Xác nhận runtime: `GET /health` là `healthy`, database `available`, và Alembic ở revision `0001_initial_schema (head)`.
+- Xác nhận build production Next.js và Docker image frontend thành công; frontend/backend container cùng đang chạy.
+- Luồng map, tìm kiếm, chọn xã, trạng thái rỗng, bottom navigation và Tổng quan dữ liệu trống đã được kiểm thử bằng Playwright.
+- Giới hạn bàn giao: phát SMS/Zalo/loa và phát tin AI chưa được kết nối với nhà cung cấp thực. Backend hiện có mã tạo trạng thái gửi hoặc nội dung dự phòng, nên không được xem là bằng chứng thông báo đã được phát ra ngoài hệ thống.
+
+## Giai đoạn 13 — Dọn module prototype frontend
+
+- Rút gọn `frontend/lib/data.ts` thành interface helper nhỏ phục vụ runtime (`fmt`, trạng thái, màu tỷ lệ, pill và khoảng thời gian); loại bỏ toàn bộ dữ liệu xã mô phỏng và các hàm `buildModel`/`buildDetail` không còn được gọi.
+- Xóa `frontend/components/dashboard/Shared.tsx` và `frontend/lib/style.ts`, là cụm UI prototype không có import từ runtime tree.
+- Cập nhật `frontend/README.md` theo kiến trúc Next.js hiện tại, endpoint backend thực và quy ước không dùng dữ liệu mô phỏng.
