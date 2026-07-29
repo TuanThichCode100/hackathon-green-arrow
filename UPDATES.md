@@ -169,3 +169,9 @@ Tài liệu này ghi lại toàn bộ các tính năng, module và kiến trúc 
 - Rút gọn `frontend/lib/data.ts` thành interface helper nhỏ phục vụ runtime (`fmt`, trạng thái, màu tỷ lệ, pill và khoảng thời gian); loại bỏ toàn bộ dữ liệu xã mô phỏng và các hàm `buildModel`/`buildDetail` không còn được gọi.
 - Xóa `frontend/components/dashboard/Shared.tsx` và `frontend/lib/style.ts`, là cụm UI prototype không có import từ runtime tree.
 - Cập nhật `frontend/README.md` theo kiến trúc Next.js hiện tại, endpoint backend thực và quy ước không dùng dữ liệu mô phỏng.
+
+## Giai đoạn 14 — Chuẩn hóa Supabase frontend
+
+- Xóa Supabase client cũ tại `frontend/lib/supabase.ts`, vốn không có caller và giữ fallback credential trong source.
+- Xóa `frontend/test_supabase.js`, script chẩn đoán không được khai báo trong package workflow.
+- Giữ `frontend/utils/supabase/clients.ts` là adapter Supabase phía trình duyệt duy nhất mà `app/page.tsx` và `Login.tsx` sử dụng.
