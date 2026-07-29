@@ -15,12 +15,12 @@ interface Props {
   handleToggleEmergency: () => void;
 }
 
-const items: Array<{ key: string; label: string; icon: ComponentType<any>; protected?: boolean }> = [
-  { key: 'map', label: 'Bản đồ rủi ro', icon: MapTrifold },
+const items: Array<{ key: string; label: string; mobileLabel?: string; icon: ComponentType<any>; protected?: boolean }> = [
+  { key: 'map', label: 'Bản đồ rủi ro', mobileLabel: 'Bản đồ', icon: MapTrifold },
   { key: 'overview', label: 'Tổng quan', icon: ChartLineUp },
   { key: 'communes', label: 'Địa bàn', icon: Buildings },
   { key: 'channels', label: 'Phân phối', icon: Broadcast },
-  { key: 'policy', label: 'Văn bản chỉ đạo', icon: BookOpenText },
+  { key: 'policy', label: 'Văn bản chỉ đạo', mobileLabel: 'Văn bản', icon: BookOpenText },
   { key: 'database', label: 'Dữ liệu dân cư', icon: Database, protected: true },
   { key: 'roles', label: 'Phân quyền', icon: ShieldCheck, protected: true },
 ];
@@ -38,7 +38,8 @@ export default function Sidebar({ user, view, setView, emergency, onLogout, onLo
           return (
             <button key={item.key} className="nav-button" aria-current={view === item.key ? 'page' : undefined} onClick={() => setView(item.key)} title={item.label}>
               <Icon size={19} weight={view === item.key ? 'bold' : 'regular'} />
-              <span>{item.label}</span>
+              <span className="nav-label">{item.label}</span>
+              <span className="nav-label-mobile">{item.mobileLabel || item.label}</span>
             </button>
           );
         })}

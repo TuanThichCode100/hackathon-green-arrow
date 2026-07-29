@@ -146,3 +146,11 @@ Tài liệu này ghi lại toàn bộ các tính năng, module và kiến trúc 
 - Ổn định lifecycle Leaflet khi SWR tái xác thực dữ liệu: không tái tạo map hoặc làm reset khung nhìn trong lúc người dùng chọn địa bàn; đồng thời làm sạch registry layer trước mỗi lượt khởi tạo.
 - Bổ sung trạng thái rỗng `Không tìm thấy địa bàn phù hợp.` cho tổ hợp tìm kiếm/lọc không có kết quả.
 - Sửa thao tác cuộn khi chọn xã: chỉ cuộn vùng danh sách nội bộ, không còn kéo cả trang làm bản đồ ra khỏi viewport; focus giữ nguyên mức zoom và chỉ bay tới tâm địa bàn khi tâm nằm ngoài khung nhìn.
+
+## Giai đoạn 11 — Điều hướng mobile
+
+- Chuyển navigation mobile thành bottom navigation cố định, cao 68 px, theo cấu trúc quen thuộc của ứng dụng di động: icon và nhãn ngắn, vùng chạm rõ ràng, có trạng thái mục đang chọn.
+- Giữ 5 tác vụ chính trên taskbar: Bản đồ, Tổng quan, Địa bàn, Phân phối và Văn bản; các màn quản trị không làm quá tải điều hướng hiện trường.
+- Đưa nhận diện GreenForecast lên đầu màn hình riêng với logo và tên ứng dụng; header nội dung nằm bên dưới, không còn trộn với thanh điều hướng.
+- Dành khoảng đệm phía cuối app shell để nội dung không bị taskbar che khuất; duy trì `prefers-reduced-motion` và focus state hiện có.
+- Kiểm thử Playwright ở viewport 390 × 844: bottom navigation hiển thị đúng đáy màn hình và chuyển sang Tổng quan thành công.
