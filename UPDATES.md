@@ -487,3 +487,24 @@ flowchart LR
   D -->|Không| F[Không hiển thị]
   E --> G[Thông tin lưu giữ 30 ngày và có thể khôi phục]
 ```
+## Giai đoạn 38 — Phản ánh thông tin đa ngữ cảnh
+
+- Thêm mục **Phản ánh thông tin** trên thanh điều hướng cho cán bộ đã đăng nhập. Cán bộ xã có thể gửi phản ánh với hạng mục tương ứng các khu vực nghiệp vụ, vị trí/đối tượng liên quan và mã văn bản đều là thông tin tùy chọn; mô tả vấn đề là bắt buộc.
+- Cán bộ tỉnh xem toàn bộ phản ánh, chuyển trạng thái sang đang xử lý/đã xử lý/không tiếp nhận và bắt buộc ghi kết quả xử lý khi hoàn tất. Cán bộ xã chỉ xem được phản ánh do chính mình gửi.
+- Chuông thông báo tổng hợp phản ánh mới cho cán bộ tỉnh, có trạng thái đã đọc riêng từng cán bộ. Không tiết lộ nội dung phản ánh cho người không có quyền tiếp nhận.
+- Migration `0005_feedback` tạo bảng `feedback` và `feedback_notification_reads`; Docker entrypoint đã tự chạy Alembic lên head khi triển khai.
+- Kiểm tra: frontend Next.js build thành công, backend compile thành công, Alembic ở `0005_feedback (head)` và regression tests backend đạt 4/4.
+
+```mermaid
+flowchart LR
+  A[Cán bộ xã phát hiện vấn đề] --> B[Chọn hạng mục + mô tả]
+  B --> C[POST /api/feedback]
+  C --> D[Phản ánh: pending]
+  D --> E[Chuông thông báo cán bộ tỉnh]
+  E --> F[Cán bộ tỉnh tiếp nhận]
+  F --> G{Kết quả}
+  G -->|Đang xử lý| H[reviewing]
+  G -->|Đã xử lý| I[resolved + kết quả]
+  G -->|Không tiếp nhận| J[dismissed + lý do]
+  H --> F
+```

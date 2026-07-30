@@ -8,6 +8,7 @@ from app.core.database import Base
 from app.modules.agent import models as agent_models
 from app.modules.communes import models as commune_models
 from app.modules.documents import models as document_models
+from app.modules.feedback import models as feedback_models
 from app.modules.notifications import models as notification_models
 from app.modules.predictions import models as prediction_models
 from app.modules.residents import models as resident_models

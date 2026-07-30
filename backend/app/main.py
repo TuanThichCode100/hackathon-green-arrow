@@ -29,6 +29,8 @@ try:
     routers.append(disaster_router)
     from app.modules.users.router import router as users_router
     routers.append(users_router)
+    from app.modules.feedback.router import router as feedback_router
+    routers.append(feedback_router)
 except ImportError as e:
     print(f"Warning: A router could not be imported. {e}")
 

@@ -23,6 +23,7 @@ const items: Array<{ key: string; label: string; mobileLabel?: string; icon: Com
   { key: 'policy', label: 'Văn bản chỉ đạo', mobileLabel: 'Văn bản', icon: BookOpenText },
   { key: 'database', label: 'Dữ liệu dân cư', icon: Database, protected: true },
   { key: 'roles', label: 'Phân quyền', icon: ShieldCheck, protected: true },
+  { key: 'feedback', label: 'Phản ánh thông tin', icon: BellRinging, protected: true },
 ];
 
 export default function Sidebar({ user, view, setView, emergency, onLogout, onLoginRequest, handleToggleEmergency }: Props) {

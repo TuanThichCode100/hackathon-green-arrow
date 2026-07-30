@@ -16,8 +16,9 @@ import ResidentsDB from './ResidentsDB';
 import CommuneDetailSlideOver from './dashboard/CommuneDetailSlideOver';
 import UploadModal from './dashboard/UploadModal';
 import DocumentReviewModal from './dashboard/DocumentReviewModal';
+import FeedbackView from './dashboard/FeedbackView';
 
-type ViewKey = 'map' | 'overview' | 'communes' | 'policy' | 'channels' | 'roles' | 'database';
+type ViewKey = 'map' | 'overview' | 'communes' | 'policy' | 'channels' | 'roles' | 'database' | 'feedback';
 
 interface Props {
   user: User | null;
@@ -165,6 +166,7 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
           {view === 'channels' && <ChannelsView m={snapshot} />}
           {view === 'roles' && <RolesView user={user} />}
           {view === 'database' && <ResidentsDB isProv={user?.role === 'tinh'} showToast={showToast} communesData={snapshot.communes} />}
+          {view === 'feedback' && <FeedbackView user={user} showToast={showToast} />}
         </main>
       </section>
 
