@@ -13,7 +13,7 @@ class Document(Base):
     file_path: Mapped[str] = mapped_column(String)
     llm_summary: Mapped[str] = mapped_column(Text, nullable=True)
     start_date: Mapped[date] = mapped_column(Date)
-    end_date: Mapped[date] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String, default="active")
     upload_status: Mapped[str] = mapped_column(String, default="approved", index=True)
     document_number: Mapped[str] = mapped_column(String, nullable=True)

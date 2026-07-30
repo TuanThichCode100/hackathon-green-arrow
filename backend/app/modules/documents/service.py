@@ -9,7 +9,8 @@ import json
 import re
 import base64
 import uuid
-from datetime import datetime, timedelta
+from zipfile import ZipFile
+from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 
@@ -93,7 +94,7 @@ def delete_object(key: str | None):
 
 def write_draft(document: Document, analysis: dict):
     key = storage_key("drafts", "json")
-    save_encrypted(key, json.dumps(analysis, ensure_ascii=False).encode("utf-8"))
+    save_encrypted(key, json.dumps(analysis, ensure_ascii=False, default=lambda value: value.isoformat() if isinstance(value, (date, datetime)) else str(value)).encode("utf-8"))
     document.draft_analysis_path = key
 
 
@@ -120,20 +121,55 @@ def heuristic_draft(text: str, filename: str) -> dict:
     normalized = " ".join(text.split())
     dates = re.findall(r"\b(?:0?[1-9]|[12]\d|3[01])[-/](?:0?[1-9]|1[0-2])[-/]\d{4}\b", normalized)
     number = re.search(r"(?:Số|SỐ)\s*[:]?\s*([^\n]{3,80})", text)
-    first_line = next((line.strip() for line in text.splitlines() if line.strip()), Path(filename).stem)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    first_line = next((line for line in lines if not line.lower().startswith("ký bởi:")), Path(filename).stem)
+    doc_type_match = re.search(r"(?im)^(QUYẾT ĐỊNH|CHỈ THỊ|THÔNG BÁO|CÔNG VĂN|KẾ HOẠCH|BÁO CÁO|NGHỊ QUYẾT)\s*$", text)
+    doc_type = doc_type_match.group(1).title() if doc_type_match else "Chỉ đạo"
+    title = first_line
+    if doc_type_match:
+        after_type = text[doc_type_match.end():].splitlines()
+        title_lines = []
+        for line in after_type:
+            cleaned = line.strip()
+            if not cleaned:
+                continue
+            if re.match(r"(?i)^(căn cứ|xét |theo đề nghị|điều\s+\d+|ủy ban nhân dân)", cleaned):
+                break
+            title_lines.append(cleaned)
+            if len(" ".join(title_lines)) >= 250:
+                break
+        if title_lines:
+            title = " ".join(title_lines)[:250]
+    vietnamese_dates = re.findall(r"ngày\s*(\d{1,2})\s*tháng\s*(\d{1,2})\s*năm\s*(\d{4})", normalized, flags=re.IGNORECASE)
+    parsed_dates = []
+    for day, month, year in vietnamese_dates:
+        try:
+            parsed_dates.append(date(int(year), int(month), int(day)))
+        except ValueError:
+            continue
+    issued_match = re.search(r"((?:UBND|ỦY BAN NHÂN DÂN|HỘI ĐỒNG NHÂN DÂN)\s*(?:\n|\s)+(?:TỈNH|THÀNH PHỐ|HUYỆN|QUẬN|XÃ|PHƯỜNG)\s+[^\n]{2,100})", text, flags=re.IGNORECASE)
+    if not issued_match:
+        issued_match = re.search(r"((?:BỘ|SỞ)\s+[^\n]{3,120})", text, flags=re.IGNORECASE)
+    effective_match = re.search(r"có hiệu lực(?: thi hành)?(?: kể từ)?\s+ngày\s*(\d{1,2})\s*tháng\s*(\d{1,2})\s*năm\s*(\d{4})", normalized, flags=re.IGNORECASE)
+    issued_date = parsed_dates[0] if parsed_dates else None
+    start_date = date(int(effective_match.group(3)), int(effective_match.group(2)), int(effective_match.group(1))) if effective_match else None
     low = normalized.lower()
     keywords = [item for item in ("khẩn", "sơ tán", "mưa", "lũ", "sạt lở", "cảnh báo") if item in low]
-    evidence = {"title": {"page": 1, "quote": first_line[:220]}}
+    evidence = {"title": {"page": 1, "quote": title[:220]}}
     if number:
         evidence["document_number"] = {"page": 1, "quote": number.group(0)[:220]}
     if dates:
         evidence["issued_date"] = {"page": 1, "quote": dates[0]}
+    if issued_match:
+        evidence["issued_by"] = {"page": 1, "quote": issued_match.group(0)[:220]}
+    if effective_match:
+        evidence["start_date"] = {"page": 1, "quote": effective_match.group(0)[:220]}
     return {
         "draft": {
             "document_number": number.group(1).strip() if number else None,
-            "title": first_line[:250], "doc_type": "Chỉ đạo", "issued_by": None,
-            "issued_date": None, "start_date": None, "end_date": None,
-            "llm_summary": normalized[:700] or None,
+            "title": title, "doc_type": doc_type, "issued_by": " ".join(issued_match.group(0).split()) if issued_match else None,
+            "issued_date": issued_date, "start_date": start_date, "end_date": None,
+            "llm_summary": None,
             "required_actions": None, "urgency": "khẩn" if "khẩn" in keywords else None,
             "scope_type": "province", "commune_ids": [], "show_original_to_province": False,
         },
@@ -143,16 +179,80 @@ def heuristic_draft(text: str, filename: str) -> dict:
     }
 
 
+MAX_OCR_IMAGES = 20
+_text_detector = None
+
+
+def _text_regions(image):
+    """Return text-line crops in top-to-bottom, left-to-right reading order."""
+    global _text_detector
+    import numpy as np
+    from paddleocr import TextDetection
+
+    if _text_detector is None:
+        _text_detector = TextDetection(engine="paddle")
+    results = list(_text_detector.predict(np.array(image)))
+    if not results:
+        return [image]
+    payload = results[0].json.get("res", {})
+    polygons = payload.get("dt_polys", [])
+    regions = []
+    for polygon in polygons:
+        points = np.asarray(polygon)
+        left, top = points.min(axis=0).astype(int)
+        right, bottom = points.max(axis=0).astype(int)
+        left, top = max(0, left - 3), max(0, top - 3)
+        right, bottom = min(image.width, right + 3), min(image.height, bottom + 3)
+        if right > left and bottom > top:
+            regions.append((top, left, image.crop((left, top, right, bottom))))
+    return [crop for _, _, crop in sorted(regions)] or [image]
+
+
+def _ocr_images(content: bytes, filename: str):
+    """Yield images from a scan, PDF pages, or images embedded in a DOCX."""
+    from PIL import Image
+
+    extension = Path(filename).suffix.lower()
+    if extension == ".pdf":
+        import fitz
+        pdf = fitz.open(stream=content, filetype="pdf")
+        try:
+            if len(pdf) > MAX_OCR_IMAGES:
+                raise RuntimeError(f"PDF scan has {len(pdf)} pages; maximum is {MAX_OCR_IMAGES}")
+            for page in pdf:
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                yield Image.open(BytesIO(pixmap.tobytes("png"))).convert("RGB")
+        finally:
+            pdf.close()
+        return
+    if extension == ".docx":
+        with ZipFile(BytesIO(content)) as archive:
+            image_paths = [name for name in archive.namelist() if name.startswith("word/media/")]
+            if not image_paths:
+                raise RuntimeError("DOCX has no text or embedded images to OCR")
+            if len(image_paths) > MAX_OCR_IMAGES:
+                raise RuntimeError(f"DOCX has {len(image_paths)} images; maximum is {MAX_OCR_IMAGES}")
+            for image_path in image_paths:
+                yield Image.open(BytesIO(archive.read(image_path))).convert("RGB")
+        return
+    yield Image.open(BytesIO(content)).convert("RGB")
+
+
 def run_ocr(content: bytes, filename: str) -> tuple[str, float]:
-    """CPU-safe OCR seam. VietOCR is optional until its worker image is provisioned."""
+    """Run VietOCR on images, rendered PDF scan pages, or embedded DOCX images."""
     try:
         from vietocr.tool.predictor import Predictor
         from vietocr.tool.config import Cfg
-        from PIL import Image
         config = Cfg.load_config_from_name("vgg_seq2seq")
         config["device"] = "cuda" if _cuda_available() else "cpu"
         predictor = Predictor(config)
-        return predictor.predict(Image.open(BytesIO(content))), 0.8
+        pages = list(_ocr_images(content, filename))
+        if not pages:
+            raise RuntimeError("No images available for OCR")
+        text_pages = []
+        for page in pages:
+            text_pages.append("\n".join(predictor.predict(region) for region in _text_regions(page)))
+        return "\n\n".join(text_pages), 0.8
     except Exception as exc:
         raise RuntimeError(f"Không thể OCR bằng VietOCR: {exc}") from exc
 

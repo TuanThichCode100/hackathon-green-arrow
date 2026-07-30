@@ -272,3 +272,84 @@ flowchart LR
   D --> F
   D --> G
 ```
+
+## Giai đoạn 25 — OCR cho PDF scan và DOCX có ảnh
+
+- Bổ sung PyMuPDF để render từng trang PDF scan thành ảnh RGB trước khi gọi VietOCR; lỗi Pillow không nhận diện được byte PDF không còn xảy ra.
+- DOCX không có text layer nay đọc các ảnh nhúng trong `word/media`; ảnh/PDF/DOCX scan đều giới hạn 20 trang hoặc ảnh mỗi lần tải để bảo vệ worker CPU.
+- Tạo Docker named volume `ocr_model_cache` tại `/root/.cache/torch`, giữ lại trọng số OCR qua các lần recreate container.
+- Đã kiểm tra trong container: PDF mẫu được render thành ảnh RGB 1190×1684 thành công.
+
+```mermaid
+flowchart LR
+  A[PDF scan hoặc DOCX có ảnh] --> B[Render/trích ảnh]
+  B --> C[VietOCR CPU]
+  C --> D[Text trích xuất]
+  D --> E[SLM và bản xem trước]
+```
+
+## Giai đoạn 26 — Văn bản không có ngày hết hiệu lực
+
+- Sửa model `Document.end_date` và migration `0003_documents_end_date_nullable`: ngày hết hiệu lực là dữ liệu tùy chọn, phù hợp với văn bản chưa xác định thời hạn.
+- Đã rebuild backend để Alembic tự nâng cấp schema và truy vấn PostgreSQL xác nhận cột `documents.end_date` cho phép `NULL`.
+- Tài liệu bị rollback khi duyệt vẫn giữ `pending_review`, do đó cán bộ có thể xác nhận lại sau khi refresh mà không phải tải lên lại.
+
+```mermaid
+flowchart LR
+  A[Bản xem trước đã xác nhận] --> B{Có ngày hết hiệu lực?}
+  B -->|Có| C[Lưu end_date]
+  B -->|Không| D[Lưu NULL hợp lệ]
+  C --> E[approved]
+  D --> E
+```
+## Giai đoạn 27 — OCR nội bộ theo vùng chữ
+
+- Tích hợp PP-OCRv6 Text Detection chạy CPU trước VietOCR: ảnh trang được phát hiện vùng chữ, cắt theo bounding box và sắp xếp theo thứ tự đọc trước khi recognizer xử lý.
+- Bổ sung PaddlePaddle/PaddleOCR, runtime OpenCV cho Docker slim và volume `paddle_model_cache`; trọng số detector và VietOCR được cache qua các lần recreate container.
+- Smoke test đầy đủ trên ảnh nội bộ đạt kết quả `VAN BAN CHI DAO`, xác nhận luồng PP-OCR detector → VietOCR hoạt động.
+
+```mermaid
+flowchart LR
+  A[Ảnh trang] --> B[PP-OCRv6 phát hiện vùng chữ]
+  B --> C[Crop + thứ tự đọc]
+  C --> D[VietOCR Seq2seq]
+  D --> E[Text cho SLM và preview]
+```
+## Giai đoạn 28 — Metadata fallback và trạng thái sau duyệt
+
+- Fallback không dùng SLM nay trích xuất thêm cơ quan ban hành, ngày ban hành và ngày hiệu lực theo mẫu văn bản hành chính tiếng Việt; tóm tắt để trống thay vì ghi thô toàn bộ OCR.
+- Sau khi duyệt thành công, UI quay về mục Văn bản chỉ đạo với filter `Đã duyệt` và tải lại danh sách; không giữ nhầm filter `Thất bại` từ lần xác nhận thiếu trường trước đó.
+- Xác minh dữ liệu thực tế: văn bản 6 đã ở trạng thái `approved`/`active`; backend không tự đổi văn bản đã duyệt thành thất bại.
+
+```mermaid
+flowchart LR
+  A[OCR text] --> B[Regex metadata fallback]
+  B --> C[Preview có thể chỉnh sửa]
+  C --> D[Xác nhận thành công]
+  D --> E[Remount danh sách Đã duyệt]
+```
+## Giai đoạn 29 — Chuẩn hóa ngày trong bản nháp OCR
+
+- Sửa lỗi `Object of type date is not JSON serializable` khi metadata fallback trích được ngày ban hành hoặc hiệu lực.
+- `date` và `datetime` được chuẩn hóa ISO-8601 trước khi bản nháp JSON được mã hóa/lưu trữ; đã rebuild backend và kiểm tra serializer thành công.
+
+```mermaid
+flowchart LR
+  A[Metadata có date Python] --> B[Chuẩn hóa ISO-8601]
+  B --> C[JSON mã hóa]
+  C --> D[UI bản xem trước]
+```
+## Giai đoạn 30 — Heuristic cấu trúc văn bản hành chính
+
+- Tiêu đề được nhận diện từ các dòng sau loại văn bản (Quyết định, Chỉ thị, Công văn…), thay vì lấy nhầm dòng header cơ quan.
+- Cơ quan ban hành ghép được hai dòng tổ chức–địa danh, ví dụ `ỦY BAN NHÂN DÂN` và `TỈNH ĐIỆN BIÊN`.
+- Khi SLM chưa cấu hình, các trường tóm tắt/hành động hiển thị gợi ý nhập thủ công, không ngụ ý nội dung OCR là tóm tắt.
+
+```mermaid
+flowchart LR
+  A[OCR có cấu trúc dòng] --> B[Nhận diện loại văn bản]
+  B --> C[Lấy các dòng tiêu đề kế tiếp]
+  A --> D[Ghép cơ quan hai dòng]
+  C --> E[Bản nháp review]
+  D --> E
+```

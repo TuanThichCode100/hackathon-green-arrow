@@ -16,6 +16,8 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/data/uploads:/app/data/uploads
+      - ocr_model_cache:/root/.cache/torch
+      - paddle_model_cache:/root/.paddlex
 
   frontend:
     build:
@@ -29,4 +31,8 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     ports:
       - "3000:3000"
+
+volumes:
+  ocr_model_cache:
+  paddle_model_cache:
 

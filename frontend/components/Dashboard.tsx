@@ -27,6 +27,7 @@ interface Props {
 
 export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
   const [view, setView] = useState<ViewKey>('map');
+  const [policyRefresh, setPolicyRefresh] = useState(0);
   const [timeRange, setTimeRange] = useState('today');
   const [emergency, setEmergency] = useState(false);
   const [detailId, setDetailId] = useState<string | number | null>(null);
@@ -160,7 +161,7 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
           {view === 'map' && <MapView m={snapshot} emergency={emergency} setDetailId={setDetailId} view={view} />}
           {view === 'overview' && <OverviewView m={snapshot} />}
           {view === 'communes' && <CommunesView m={snapshot} setDetailId={setDetailId} />}
-          {view === 'policy' && <PolicyView m={snapshot} user={user} setUploadOpen={setUploadOpen} />}
+          {view === 'policy' && <PolicyView key={policyRefresh} m={snapshot} user={user} setUploadOpen={setUploadOpen} />}
           {view === 'channels' && <ChannelsView m={snapshot} />}
           {view === 'roles' && <RolesView user={user} />}
           {view === 'database' && <ResidentsDB isProv={user?.role === 'tinh'} showToast={showToast} communesData={snapshot.communes} />}
@@ -178,7 +179,7 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
         />
       )}
       {uploadOpen && <UploadModal setUploadOpen={setUploadOpen} showToast={(message, tone) => showToast(message, tone as any)} onUploaded={setReviewDocumentId} />}
-      {reviewDocumentId && <DocumentReviewModal documentId={reviewDocumentId} communes={snapshot.communes.map((commune) => ({ id: Number(commune.id), name: commune.name }))} onClose={() => setReviewDocumentId(null)} onDone={() => { setReviewDocumentId(null); showToast('Đã cập nhật trạng thái văn bản.'); }} />}
+      {reviewDocumentId && <DocumentReviewModal documentId={reviewDocumentId} communes={snapshot.communes.map((commune) => ({ id: Number(commune.id), name: commune.name }))} onClose={() => setReviewDocumentId(null)} onDone={() => { setReviewDocumentId(null); setView('policy'); setPolicyRefresh((version) => version + 1); showToast('Văn bản đã được duyệt và hiển thị trong mục Đã duyệt.'); }} />}
       {toast && (
         <div className="toast" role="status">
           {toast.tone === 'success' ? <CheckCircle size={17} weight="fill" /> : toast.tone === 'warning' ? <WarningCircle size={17} weight="fill" /> : <XCircle size={17} weight="fill" />}
