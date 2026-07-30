@@ -238,3 +238,37 @@ flowchart LR
 
 - Xác thực khóa Fernet trước mọi thao tác mã hóa/giải mã tài liệu. Khóa sai trả HTTP 503 với mã `DOCUMENT_ENCRYPTION_MISCONFIGURED` thay vì lỗi 500.
 - Bổ sung placeholder rõ ràng trong `backend/.env.example`: cần khóa URL-safe Base64 giải mã thành đúng 32 byte.
+## Giai đoạn 23 — Chẩn đoán lỗi upload và bản xem trước
+
+- Tái hiện nhánh lỗi 404: khi `draft_analysis_path` chưa được tạo, endpoint bản xem trước trả về `404 Bản nháp phân tích không còn khả dụng`.
+- Xác nhận hai nguyên nhân độc lập từ code, log container và trạng thái bản ghi: frontend mở preview ngay sau khi upload trong khi backend còn `processing`; sau đó OCR thất bại vì container có `vietocr` nhưng thiếu gói `torch`.
+- Hướng sửa đã xác định: API preview cần trả trạng thái `processing` có thể poll thay vì 404; frontend hiển thị trạng thái đang trích xuất và chỉ hiện form khi `pending_review`; Docker phải cài PyTorch CPU trước VietOCR, đồng thời phản hồi rõ trạng thái `failed` và thông điệp lỗi OCR.
+
+```mermaid
+flowchart LR
+  A[POST upload: processing] --> B[Frontend mở preview ngay]
+  B -->|chưa có draft| C[404 hiện tại]
+  A --> D[Background extraction]
+  D -->|thiếu torch| E[failed + draft lỗi]
+  C --> F[Preview status + polling]
+  E --> G[Cài PyTorch CPU và hiển thị lỗi rõ ràng]
+```
+
+## Giai đoạn 24 — Hoàn thiện luồng chờ xử lý và OCR VietOCR
+
+- Endpoint `GET /api/documents/{id}/preview` trả HTTP `202` cùng trạng thái `processing` khi tác vụ nền chưa tạo bản nháp, thay cho 404 sai ngữ nghĩa.
+- Modal xem trước tự polling mỗi 2 giây, hiển thị trạng thái đang trích xuất; form chỉ xuất hiện khi bản nháp sẵn sàng và lỗi OCR hiển thị rõ khi trạng thái thất bại.
+- Docker backend cài bộ PyTorch CPU tương thích (`torch 2.5.1+cpu`, `torchvision 0.20.1+cpu`) từ kho PyTorch CPU trước VietOCR. Đã build image, khởi động container và xác nhận VietOCR import thành công; CUDA hiện `false` theo hạ tầng CPU.
+- Đã smoke-test OCR thật trên ảnh mẫu trong container. Lần khởi tạo đầu tiên tải trọng số VGG19 khoảng 548 MB vào cache của container; các lần xử lý tiếp theo trên cùng container dùng lại cache này.
+
+```mermaid
+flowchart LR
+  A[Upload thành công] --> B[processing]
+  B --> C[Preview: HTTP 202]
+  C --> D[UI polling 2 giây]
+  B --> E[Trích xuất với VietOCR CPU]
+  E -->|thành công| F[pending_review + form xác nhận]
+  E -->|thất bại| G[failed + lỗi rõ ràng]
+  D --> F
+  D --> G
+```

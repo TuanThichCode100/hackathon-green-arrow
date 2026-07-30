@@ -4,6 +4,7 @@ import hashlib
 import json
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.common.schemas import APIResponse
@@ -73,6 +74,8 @@ def preview(document_id: int, db: Session = Depends(get_db), user: dict = Depend
     document = get_document_or_404(db, document_id)
     if not service.can_manage_draft(document, user):
         raise HTTPException(status_code=403, detail="Chỉ người upload mới xem được bản nháp")
+    if document.upload_status == "processing":
+        return JSONResponse(status_code=202, content={"data": {"status": "processing", "document_id": document.id}})
     analysis = service.read_draft(document)
     if document.upload_status == "failed":
         raise HTTPException(status_code=422, detail=analysis.get("error", "Không thể trích xuất văn bản"))
