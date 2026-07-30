@@ -19,5 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN chmod +x /app/entrypoint.sh
+
+# Run migrations before the API accepts traffic.
+CMD ["/app/entrypoint.sh"]

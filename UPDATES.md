@@ -228,3 +228,8 @@ flowchart LR
 - Gộp các trạng thái Đã duyệt, Đang xử lý, Chờ duyệt, Thất bại và Đã xóa vào cùng trang Văn bản chỉ đạo bằng bộ lọc trạng thái.
 - Cấp tỉnh mới thấy nút upload; API vẫn áp dụng giới hạn người upload cho bản nháp và trạng thái thất bại.
 - Xác nhận lại production build Next.js thành công sau khi bổ sung danh sách và modal review.
+
+## Giai đoạn 21 — Migration tự động khi khởi động backend
+
+- Bổ sung `backend/entrypoint.sh`: chạy `alembic upgrade head` trước khi khởi động Uvicorn.
+- Docker image backend chỉ nhận traffic sau khi migration thành công; migration thất bại làm container dừng để tránh chạy API trên schema cũ.
