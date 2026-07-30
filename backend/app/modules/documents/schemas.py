@@ -26,6 +26,8 @@ class DocumentResponse(DocumentDraft):
     upload_status: str
     source_hash: Optional[str] = None
     original_filename: Optional[str] = None
+    original_mime_type: Optional[str] = None
+    commune_ids: list[int] = Field(default_factory=list)
     draft_expires_at: Optional[datetime] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
@@ -36,6 +38,7 @@ class DocumentPreviewResponse(BaseModel):
     draft: DocumentDraft
     evidence: dict = Field(default_factory=dict)
     extraction_confidence: Optional[float] = None
+    ai_analysis: dict = Field(default_factory=dict)
 
 
 class OriginalViewRequest(BaseModel):

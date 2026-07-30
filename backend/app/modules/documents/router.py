@@ -79,7 +79,7 @@ def preview(document_id: int, db: Session = Depends(get_db), user: dict = Depend
     analysis = service.read_draft(document)
     if document.upload_status == "failed":
         raise HTTPException(status_code=422, detail=analysis.get("error", "Không thể trích xuất văn bản"))
-    return {"data": {"document": document, "draft": analysis.get("draft", {}), "evidence": analysis.get("evidence", {}), "extraction_confidence": analysis.get("extraction_confidence")}}
+    return {"data": {"document": document, "draft": analysis.get("draft", {}), "evidence": analysis.get("evidence", {}), "extraction_confidence": analysis.get("extraction_confidence"), "ai_analysis": analysis.get("ai_analysis", {})}}
 
 
 @router.put("/{document_id}/preview", response_model=APIResponse[schemas.DocumentPreviewResponse])
@@ -88,7 +88,7 @@ def update_preview(document_id: int, draft: schemas.DocumentDraft, db: Session =
     if not service.can_manage_draft(document, user):
         raise HTTPException(status_code=403, detail="Không có quyền sửa bản nháp")
     analysis = service.read_draft(document); analysis["draft"] = draft.model_dump(mode="json"); service.delete_object(document.draft_analysis_path); service.write_draft(document, analysis); service.audit(db, document.id, user, "draft_updated"); db.commit()
-    return {"data": {"document": document, "draft": analysis["draft"], "evidence": analysis.get("evidence", {}), "extraction_confidence": analysis.get("extraction_confidence")}}
+    return {"data": {"document": document, "draft": analysis["draft"], "evidence": analysis.get("evidence", {}), "extraction_confidence": analysis.get("extraction_confidence"), "ai_analysis": analysis.get("ai_analysis", {})}}
 
 
 @router.post("/{document_id}/approve", response_model=APIResponse[schemas.DocumentResponse])
@@ -152,3 +152,41 @@ def view_original(document_id: int, db: Session = Depends(get_db), user: dict = 
         raise HTTPException(status_code=403, detail="Cần được phê duyệt để xem bản gốc")
     service.audit(db, document.id, user, "original_viewed"); db.commit()
     return Response(content=service.read_encrypted(document.file_path), media_type=document.original_mime_type or "application/octet-stream", headers={"Content-Disposition": "inline"})
+@router.get("/{document_id}/view-access", response_model=APIResponse[dict])
+def original_view_access(document_id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user_metadata)):
+    document = get_document_or_404(db, document_id)
+    if document.upload_status != "approved":
+        raise HTTPException(status_code=404, detail="Không tìm thấy văn bản đã duyệt")
+    request = service.latest_view_request(db, document, user)
+    return {"data": {
+        "permitted": service.can_view_original(db, document, user),
+        "request_status": request.status if request else None,
+        "view_expires_at": request.view_expires_at if request else None,
+        "show_original_to_province": document.show_original_to_province,
+    }}
+
+
+@router.get("/{document_id}/display")
+def view_display(document_id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user_metadata)):
+    document = get_document_or_404(db, document_id)
+    if not service.can_view_original(db, document, user):
+        raise HTTPException(status_code=403, detail="Cần được phê duyệt để xem bản gốc")
+    service.audit(db, document.id, user, "original_viewed")
+    db.commit()
+    return Response(
+        content=service.display_pdf(document),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline", "Cache-Control": "no-store"},
+    )
+
+
+@router.get("/{document_id}/preview-display")
+def preview_display(document_id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user_metadata)):
+    document = get_document_or_404(db, document_id)
+    if not service.can_manage_draft(document, user):
+        raise HTTPException(status_code=403, detail="Chỉ người tải lên mới được xem tệp trong bản nháp")
+    return Response(
+        content=service.display_pdf(document),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline", "Cache-Control": "no-store"},
+    )

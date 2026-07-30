@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = ""
     LLM_MODEL: str = ""
+    LLM_TIMEOUT_SECONDS: float = 45.0
+    LLM_MAX_INPUT_CHARS: int = 24000
     GOOGLE_VISION_API_KEY: str = ""
     OPEN_METEO_BASE_URL: str = "https://api.open-meteo.com/v1"
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]

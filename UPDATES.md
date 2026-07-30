@@ -372,3 +372,62 @@ flowchart LR
   F --> H[UI Phân quyền cập nhật app_metadata qua backend]
   H --> D
 ```
+## Giai đoạn 32 — Phân tích nội dung AI không chặn quy trình duyệt
+
+- Bổ sung adapter OpenAI-compatible cho 9router: chỉ gửi phần chữ đã được trích xuất, giới hạn độ dài/timeout qua cấu hình và không ghi API key hoặc nội dung văn bản vào log.
+- AI phải trả JSON object; dữ liệu được kiểm tra kiểu, ngày ISO-8601, phạm vi và danh sách xã trước khi hòa vào bản nháp OCR. Dữ liệu sai hoặc response rỗng bị bỏ qua.
+- Khi thiếu cấu hình, lỗi mạng hoặc JSON AI không hợp lệ, văn bản vẫn vào `pending_review`; UI hiển thị câu nghiệp vụ **“AI chưa phân tích được nội dung văn bản…”** và cán bộ vẫn chỉnh sửa/xác nhận được.
+- Bổ sung audit event hệ thống chỉ ghi trạng thái và model (nếu có), không lưu text gửi nhà cung cấp. UI thay các nhãn SLM kỹ thuật bằng ngôn ngữ dành cho cán bộ.
+- Kiểm tra: 2 test AI (fallback + JSON hợp lệ), 2 test quyền tài khoản và frontend TypeScript build đều thành công; backend/frontend đã rebuild.
+
+```mermaid
+flowchart LR
+  A[Text từ OCR hoặc text layer] --> B{9router đã cấu hình?}
+  B -->|Không| C[Giữ bản nháp OCR + cảnh báo thân thiện]
+  B -->|Có| D[Gửi text giới hạn qua TLS]
+  D --> E{JSON hợp lệ?}
+  E -->|Có| F[Kiểm tra schema rồi hòa vào bản nháp]
+  E -->|Không/lỗi| C
+  C --> G[Cán bộ chỉnh sửa và xác nhận]
+  F --> G
+  G --> H[Lưu metadata chính thức]
+```
+## Giai đoạn 33 — Chi tiết văn bản và bản hiển thị có kiểm soát
+
+- Bấm một dòng văn bản đã duyệt nay mở khung trung tâm hai cột: bên trái là bản PDF hiển thị, bên phải là metadata đã xác nhận gồm cơ quan ban hành, ngày, hiệu lực, địa bàn, tóm tắt và việc cần thực hiện.
+- Bảng danh sách bổ sung cơ quan ban hành và địa bàn áp dụng; `commune_ids_json` được chuyển thành danh sách địa bàn cho API/UI, không hiển thị JSON thô.
+- Bổ sung kiểm tra quyền xem và endpoint `/display` không trả URL Storage công khai. PDF gốc được hiển thị trực tiếp; ảnh, DOCX và TXT được tạo bản PDF nội bộ trong bộ nhớ để xem trên web.
+- Khi chưa có quyền, giao diện có đủ trạng thái: đang gửi yêu cầu, đang chờ duyệt, gửi thất bại rồi tự trả về nút gửi sau 5 giây. Yêu cầu chỉ được tạo qua API có audit log.
+- Kiểm tra: renderer tạo bytes bắt đầu bằng `%PDF`; 4 regression tests backend đạt; frontend build và backend startup thành công.
+
+```mermaid
+flowchart LR
+  A[Chọn văn bản đã duyệt] --> B[Khung hai cột]
+  B --> C{Có quyền xem?}
+  C -->|Có| D[GET /display có Bearer token]
+  D --> E[PDF blob trong trình duyệt]
+  C -->|Chưa có| F[Gửi yêu cầu xem]
+  F --> G{API thành công?}
+  G -->|Có| H[Đang chờ duyệt]
+  G -->|Không| I[Thông báo thất bại 5 giây]
+  B --> J[Metadata đã xác nhận + địa bàn]
+```
+## Giai đoạn 34 — Bản xem trước upload hai cột
+
+- Màn hình **Kiểm tra thông tin văn bản** sau upload được đổi sang hai cột: PDF từ tệp vừa tải lên ở bên trái, form metadata/tóm tắt/hành động/địa bàn có thể chỉnh sửa ở bên phải.
+- Endpoint `/preview-display` chỉ cho người đã tải văn bản và đang quản lý bản nháp truy cập; không dùng URL công khai, không chờ văn bản được duyệt mới xem được tệp mình đã tải.
+- Tệp PDF/ảnh hiển thị nguyên bản; DOCX/TXT có renderer PDF nội bộ để dùng cùng một khung xem. JSON bản nháp vẫn là dữ liệu tạm và bị xóa đúng vòng đời đã quy định.
+- Kiểm tra: frontend build TypeScript thành công; backend regression 4/4 đạt sau khi rebuild container.
+
+```mermaid
+flowchart LR
+  A[Tải tệp lên] --> B[OCR + AI tạo bản nháp]
+  B --> C[pending_review]
+  C --> D[GET /preview-display chỉ người upload]
+  D --> E[PDF cột trái]
+  C --> F[Form metadata cột phải]
+  F --> G[Chỉnh sửa + tick địa bàn]
+  G --> H{Xác nhận?}
+  H -->|Có| I[Lưu metadata chính thức]
+  H -->|Thoát| J[Xóa bản nháp tạm]
+```

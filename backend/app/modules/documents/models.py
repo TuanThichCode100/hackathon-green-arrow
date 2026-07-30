@@ -1,3 +1,5 @@
+import json
+
 from sqlalchemy import Boolean, Column, Integer, String, Text, Date, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime, date
@@ -34,6 +36,14 @@ class Document(Base):
     deleted_by: Mapped[str] = mapped_column(String, nullable=True)
     deleted_by_name: Mapped[str] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    @property
+    def commune_ids(self) -> list[int]:
+        try:
+            values = json.loads(self.commune_ids_json or "[]")
+            return [value for value in values if isinstance(value, int)]
+        except (TypeError, ValueError):
+            return []
 
 
 class DocumentAuditEvent(Base):
