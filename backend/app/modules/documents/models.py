@@ -1,6 +1,6 @@
 import json
 
-from sqlalchemy import Boolean, Column, Integer, String, Text, Date, DateTime
+from sqlalchemy import Boolean, Column, Integer, String, Text, Date, DateTime, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime, date
 from app.core.database import Base
@@ -56,6 +56,15 @@ class DocumentAuditEvent(Base):
     action: Mapped[str] = mapped_column(String, index=True)
     detail: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class DocumentNotificationRead(Base):
+    __tablename__ = "document_notification_reads"
+    __table_args__ = (UniqueConstraint("event_id", "user_id", name="uq_document_notification_read"),)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    event_id: Mapped[int] = mapped_column(Integer, index=True)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class DocumentViewRequest(Base):

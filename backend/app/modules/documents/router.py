@@ -43,6 +43,28 @@ def document_activity(db: Session = Depends(get_db), user: dict = Depends(get_cu
     return {"data": visible}
 
 
+@router.get("/notifications", response_model=APIResponse[list[dict]])
+def document_notifications(db: Session = Depends(get_db), user: dict = Depends(get_current_user_metadata)):
+    return {"data": service.document_notification_feed(db, user)}
+
+
+@router.post("/notifications/read", response_model=APIResponse[bool])
+def mark_document_notifications_read(body: schemas.NotificationReadRequest, db: Session = Depends(get_db), user: dict = Depends(get_current_user_metadata)):
+    service.mark_document_notifications_read(db, user, body.event_ids)
+    db.commit()
+    return {"data": True}
+
+
+@router.get("/view-requests", response_model=APIResponse[list[dict]])
+def pending_view_requests(db: Session = Depends(get_db), user: dict = Depends(require_role(["tinh"]))):
+    requests = db.query(DocumentViewRequest).filter(DocumentViewRequest.status == "pending", DocumentViewRequest.expires_at > datetime.utcnow()).order_by(DocumentViewRequest.created_at.desc()).all()
+    data = []
+    for request in requests:
+        document = get_document_or_404(db, request.document_id)
+        data.append({"id": request.id, "document_id": document.id, "document_title": document.title, "requester_name": request.requester_name, "requester_role": request.requester_role, "reason": request.reason, "created_at": request.created_at})
+    return {"data": data}
+
+
 @router.post("/upload", response_model=APIResponse[schemas.DocumentResponse])
 async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...), db: Session = Depends(get_db), user: dict = Depends(require_role(["tinh"]))):
     content = await file.read()

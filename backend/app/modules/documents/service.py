@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.supabase_client import get_supabase_admin
-from app.modules.documents.models import Document, DocumentAuditEvent, DocumentViewRequest
+from app.modules.documents.models import Document, DocumentAuditEvent, DocumentNotificationRead, DocumentViewRequest
 
 DIRECT_TEXT_EXTENSIONS = {".txt", ".md"}
 
@@ -417,6 +417,67 @@ def latest_view_request(db: Session, document: Document, user: dict):
         DocumentViewRequest.document_id == document.id,
         DocumentViewRequest.requester_id == str(user.get("sub")),
     ).order_by(DocumentViewRequest.created_at.desc()).first()
+
+
+def document_notification_feed(db: Session, user: dict, limit: int = 40) -> list[dict]:
+    """Map audit events to user-facing, permission-filtered notification cards."""
+    user_id = str(user.get("sub"))
+    read_event_ids = {item.event_id for item in db.query(DocumentNotificationRead).filter(DocumentNotificationRead.user_id == user_id).all()}
+    events = db.query(DocumentAuditEvent).order_by(DocumentAuditEvent.created_at.desc()).limit(limit * 3).all()
+    items = []
+    for event in events:
+        document = db.query(Document).filter(Document.id == event.document_id).first()
+        if not document:
+            continue
+        request = None
+        if event.action == "original_requested":
+            request = db.query(DocumentViewRequest).filter(
+                DocumentViewRequest.document_id == document.id,
+                DocumentViewRequest.requester_id == event.actor_id,
+            ).order_by(DocumentViewRequest.created_at.desc()).first()
+            if user.get("role") != "tinh":
+                continue
+            title = "Yêu cầu xem bản gốc"
+            subtitle = f"Đã gửi yêu cầu xem bản gốc của “{document.title}”."
+        elif event.action in {"original_view_approved", "original_view_rejected"}:
+            detail = json.loads(event.detail or "{}")
+            request = db.query(DocumentViewRequest).filter(DocumentViewRequest.id == detail.get("request_id")).first()
+            if not request or request.requester_id != user_id:
+                continue
+            approved = event.action == "original_view_approved"
+            title = "Yêu cầu xem bản gốc đã được duyệt" if approved else "Yêu cầu xem bản gốc không được duyệt"
+            subtitle = f"{event.actor_name} đã {'cho phép' if approved else 'từ chối'} xem “{document.title}”."
+        elif event.action == "approved" and document.upload_status == "approved":
+            title = "Văn bản đã được duyệt"
+            subtitle = f"Đã xác nhận và công bố “{document.title}”."
+        elif event.action == "restored" and document.upload_status == "approved":
+            title = "Văn bản đã được khôi phục"
+            subtitle = f"Đã khôi phục “{document.title}”."
+        else:
+            continue
+        items.append({
+            "id": event.id,
+            "document_id": document.id,
+            "document_title": document.title,
+            "actor_name": event.actor_name,
+            "actor_role": event.actor_role,
+            "title": title,
+            "subtitle": subtitle,
+            "created_at": event.created_at,
+            "read": event.id in read_event_ids,
+            "request_id": request.id if request and event.action == "original_requested" else None,
+            "actionable": bool(request and event.action == "original_requested" and request.status == "pending" and user.get("role") == "tinh"),
+        })
+        if len(items) >= limit:
+            break
+    return items
+
+
+def mark_document_notifications_read(db: Session, user: dict, event_ids: list[int]):
+    user_id = str(user.get("sub"))
+    existing = {item.event_id for item in db.query(DocumentNotificationRead).filter(DocumentNotificationRead.user_id == user_id, DocumentNotificationRead.event_id.in_(event_ids)).all()} if event_ids else set()
+    for event_id in set(event_ids) - existing:
+        db.add(DocumentNotificationRead(event_id=event_id, user_id=user_id))
 
 
 def _text_display_pdf(text: str) -> bytes:

@@ -47,3 +47,7 @@ class OriginalViewRequest(BaseModel):
 
 class OriginalViewDecision(BaseModel):
     approve: bool
+
+
+class NotificationReadRequest(BaseModel):
+    event_ids: list[int] = Field(default_factory=list)

@@ -143,7 +143,7 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
         handleToggleEmergency={toggleEmergency}
       />
       <section className="workspace">
-        <Header view={view} timeRange={timeRange} setTimeRange={setTimeRange} clock={clock} />
+        <Header view={view} timeRange={timeRange} setTimeRange={setTimeRange} clock={clock} user={user} />
         {isError && (
           <div className="data-center-banner" role="alert">
             <WarningCircle size={17} weight="fill" />

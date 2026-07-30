@@ -431,3 +431,22 @@ flowchart LR
   H -->|Có| I[Lưu metadata chính thức]
   H -->|Thoát| J[Xóa bản nháp tạm]
 ```
+## Giai đoạn 35 — Chuông thông báo và phê duyệt yêu cầu xem bản gốc
+
+- Chuông thông báo được móc nối vào app và dùng `DocumentAuditEvent` làm nguồn dữ liệu; không tạo bản sao nội dung audit log.
+- Feed lọc theo quyền: cán bộ tỉnh nhận yêu cầu xem bản gốc; người gửi nhận kết quả duyệt/từ chối; các sự kiện công bố/khôi phục văn bản hiển thị theo quyền xem văn bản.
+- Mỗi thẻ hiển thị avatar chữ cái, tên, chức vụ, tiêu đề, mô tả thân thiện và thời gian tương đối. Bảng `document_notification_reads` lưu trạng thái đọc riêng cho từng cán bộ, tạo badge chưa đọc trên chuông.
+- Cán bộ tỉnh có nút **Duyệt** / **Từ chối** ngay trong thông báo; thao tác gọi API quyết định thật và ghi audit log. Thêm API danh sách yêu cầu đang chờ phục vụ các màn hình sau.
+- Kiểm tra với dữ liệu thật: feed của `canbotinh@dienbien.gov.vn` thấy request ID `1` từ `canboxa@dienbien.gov.vn`, `actionable=true`; Alembic đã nâng lên migration `0004`; regression tests 4/4 đạt.
+
+```mermaid
+flowchart LR
+  A[Cán bộ xã gửi yêu cầu] --> B[document_view_requests: pending]
+  B --> C[Audit original_requested]
+  C --> D[Feed cán bộ tỉnh + badge chưa đọc]
+  D --> E{Duyệt hay từ chối}
+  E -->|Duyệt| F[Quyền xem 24 giờ]
+  E -->|Từ chối| G[Không cấp quyền]
+  F --> H[Audit + thông báo cho người gửi]
+  G --> H
+```
