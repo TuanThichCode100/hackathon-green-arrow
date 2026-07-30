@@ -353,3 +353,22 @@ flowchart LR
   C --> E[Bản nháp review]
   D --> E
 ```
+## Giai đoạn 31 — Phân quyền tài khoản công vụ an toàn
+
+- Chuyển `role` và `commune_id` khỏi `user_metadata` sang `app_metadata`; backend chỉ tin các claim do service role quản lý, không cấp mặc định quyền cán bộ tỉnh cho tài khoản mới.
+- Chỉ chấp nhận tài khoản `@dienbien.gov.vn`; tài khoản chưa được cấp quyền hoặc chưa gán xã/phường nhận thông báo nghiệp vụ, không lộ chi tiết kỹ thuật.
+- Bổ sung màn hình chỉnh sửa tên, vai trò và xã/phường cho cán bộ tỉnh trong mục **Phân quyền**. Cán bộ xã bắt buộc có xã/phường; khi chuyển thành cán bộ tỉnh, xã/phường được xóa khỏi claim.
+- Khóa endpoint nạp dữ liệu xã cho cán bộ tỉnh; đã nạp 3 xã vào Supabase Database. Script `scripts/bootstrap_auth_user.py` cấp quyền cho cán bộ tỉnh đầu tiên bằng service role mà không sửa JSON Auth thủ công; đã cấp quyền `tinh` cho `canbotinh@dienbien.gov.vn`.
+- Kiểm tra: `python -m unittest test_users_router.py` trong container đạt 2/2; frontend build TypeScript thành công; container khởi động không lỗi migration.
+
+```mermaid
+flowchart LR
+  A[Supabase Auth user] --> B{Email @dienbien.gov.vn?}
+  B -->|Không| C[Từ chối truy cập]
+  B -->|Có| D{app_metadata có role?}
+  D -->|Không| E[Chưa được cấp quyền]
+  D -->|tinh| F[Cán bộ tỉnh]
+  D -->|xa + commune_id| G[Cán bộ xã]
+  F --> H[UI Phân quyền cập nhật app_metadata qua backend]
+  H --> D
+```

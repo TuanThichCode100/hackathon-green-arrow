@@ -4,6 +4,7 @@ from typing import List, Optional
 from app.core.dependencies import get_db
 from app.common.schemas import APIResponse
 from app.modules.communes import service, schemas
+from app.core.auth import require_role
 
 router = APIRouter(prefix="/api/communes", tags=["Communes"])
 
@@ -21,6 +22,6 @@ def get_one(commune_id: int, db: Session = Depends(get_db)):
     return {"data": comm}
 
 @router.post("/seed", response_model=APIResponse[str])
-def seed_db(db: Session = Depends(get_db)):
+def seed_db(db: Session = Depends(get_db), user: dict = Depends(require_role(["tinh"]))):
     service.seed_communes(db)
     return {"message": "Seeded successfully"}
