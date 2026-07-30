@@ -450,3 +450,40 @@ flowchart LR
   F --> H[Audit + thông báo cho người gửi]
   G --> H
 ```
+## Giai đoạn 36 — Xóa mềm và khôi phục văn bản
+
+- Cán bộ tỉnh có nút **Xóa** trên khung chi tiết văn bản đã duyệt. Hệ thống luôn yêu cầu xác nhận trước khi chuyển bản ghi sang trạng thái `deleted`; tệp gốc mã hóa và metadata vẫn được giữ trong 30 ngày.
+- Bộ lọc **Đã xóa** hiển thị các văn bản mà chính cán bộ đã thực hiện xóa. Trong khung chi tiết, cán bộ đó có thể dùng nút **Khôi phục** để đưa văn bản trở lại trạng thái đã duyệt trước khi hết thời hạn lưu giữ.
+- Siết quyền API: người khác không thể truy vấn bản ghi đã xóa bằng ID; văn bản đã xóa cũng không còn cung cấp `/original` hay `/display`, kể cả khi một quyền xem cũ chưa hết hạn.
+- Scheduler chạy mỗi giờ gọi `cleanup_expired_documents`; các văn bản xóa quá 30 ngày được xóa cả tệp lưu trữ và bản ghi CSDL. Không có văn bản thật nào bị xóa trong lúc kiểm tra triển khai.
+- Kiểm tra: `python -m compileall` đạt, frontend Next.js build thành công, Docker backend/frontend khởi động ổn định và 4 regression tests backend đạt.
+
+```mermaid
+flowchart LR
+  A[Văn bản đã duyệt] --> B[Cán bộ tỉnh bấm Xóa]
+  B --> C{Xác nhận thao tác?}
+  C -->|Không| A
+  C -->|Có| D[deleted + thời điểm + người xóa]
+  D --> E[Bộ lọc Đã xóa của người xóa]
+  E --> F{Khôi phục trong 30 ngày?}
+  F -->|Có| G[approved và xóa mốc đã xóa]
+  F -->|Không| H[Scheduler mỗi giờ kiểm tra]
+  H --> I{Đủ 30 ngày?}
+  I -->|Chưa| E
+  I -->|Rồi| J[Xóa tệp mã hóa và bản ghi]
+```
+## Giai đoạn 37 — Thông báo xóa văn bản
+
+- Bổ sung ánh xạ sự kiện audit `deleted` vào chuông thông báo. Thẻ thông báo dùng ngôn ngữ nghiệp vụ: **Văn bản đã được đưa vào mục đã xóa** và nêu rõ thời hạn lưu giữ 30 ngày.
+- Thông báo chỉ hiển thị cho chính cán bộ đã xóa văn bản, khớp với quyền xem riêng của bộ lọc **Đã xóa**. Các cán bộ khác không nhận được metadata của văn bản đã xóa.
+- Kiểm tra: backend compile thành công và container `greenforecast-backend` đã được rebuild/khởi động lại.
+
+```mermaid
+flowchart LR
+  A[Cán bộ tỉnh xác nhận xóa] --> B[Audit event: deleted]
+  B --> C[API notifications]
+  C --> D{Có phải người đã xóa?}
+  D -->|Có| E[Thẻ thông báo: đã đưa vào mục đã xóa]
+  D -->|Không| F[Không hiển thị]
+  E --> G[Thông tin lưu giữ 30 ngày và có thể khôi phục]
+```

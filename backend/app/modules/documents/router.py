@@ -86,6 +86,8 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
 @router.get("/{document_id}", response_model=APIResponse[schemas.DocumentResponse])
 def get_document(document_id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user_metadata)):
     document = get_document_or_404(db, document_id)
+    if document.upload_status == "deleted" and document.deleted_by != str(user.get("sub")):
+        raise HTTPException(status_code=404, detail="Không tìm thấy văn bản")
     if document.upload_status in {"processing", "pending_review", "failed"} and not service.can_manage_draft(document, user):
         raise HTTPException(status_code=403, detail="Không có quyền xem bản nháp")
     return {"data": document}
@@ -143,6 +145,8 @@ def soft_delete(document_id: int, db: Session = Depends(get_db), user: dict = De
 @router.post("/{document_id}/restore", response_model=APIResponse[schemas.DocumentResponse])
 def restore(document_id: int, db: Session = Depends(get_db), user: dict = Depends(require_role(["tinh"]))):
     document = get_document_or_404(db, document_id)
+    if document.deleted_by != str(user.get("sub")):
+        raise HTTPException(status_code=404, detail="Không tìm thấy văn bản")
     if document.upload_status != "deleted": raise HTTPException(status_code=409, detail="Văn bản không ở trạng thái đã xóa")
     document.upload_status = "approved"; document.deleted_at = None; document.deleted_by = None; document.deleted_by_name = None; service.audit(db, document.id, user, "restored"); db.commit(); return {"data": document}
 
@@ -167,6 +171,8 @@ def decide_original_request(request_id: int, body: schemas.OriginalViewDecision,
 @router.get("/{document_id}/original")
 def view_original(document_id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user_metadata)):
     document = get_document_or_404(db, document_id)
+    if document.upload_status != "approved":
+        raise HTTPException(status_code=404, detail="Không tìm thấy văn bản đã duyệt")
     now = datetime.utcnow(); permitted = user.get("role") == "tinh" and document.show_original_to_province
     if not permitted:
         permitted = db.query(DocumentViewRequest).filter(DocumentViewRequest.document_id == document.id, DocumentViewRequest.requester_id == str(user.get("sub")), DocumentViewRequest.status == "approved", DocumentViewRequest.view_expires_at > now).first() is not None
@@ -191,6 +197,8 @@ def original_view_access(document_id: int, db: Session = Depends(get_db), user: 
 @router.get("/{document_id}/display")
 def view_display(document_id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user_metadata)):
     document = get_document_or_404(db, document_id)
+    if document.upload_status != "approved":
+        raise HTTPException(status_code=404, detail="Không tìm thấy văn bản đã duyệt")
     if not service.can_view_original(db, document, user):
         raise HTTPException(status_code=403, detail="Cần được phê duyệt để xem bản gốc")
     service.audit(db, document.id, user, "original_viewed")

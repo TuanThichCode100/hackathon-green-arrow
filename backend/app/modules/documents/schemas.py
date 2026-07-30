@@ -29,6 +29,8 @@ class DocumentResponse(DocumentDraft):
     original_mime_type: Optional[str] = None
     commune_ids: list[int] = Field(default_factory=list)
     draft_expires_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
+    deleted_by_name: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 

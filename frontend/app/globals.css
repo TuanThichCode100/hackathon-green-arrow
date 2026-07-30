@@ -208,3 +208,29 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .document-review-wide { width:min(1180px, 60vw); }.review-split { min-height:520px; display:grid; grid-template-columns:minmax(0,1.04fr) minmax(340px,.96fr); }.review-source-pane { min-height:0; padding:16px; background:oklch(.28 .015 155); }.review-form-pane { overflow:auto; padding:24px; }
 @media (max-width: 720px) { .document-detail { width:100%; height:100dvh; border-radius:0; }.document-detail-body { grid-template-columns:1fr; overflow:auto; }.document-original-pane { min-height:420px; }.document-metadata-pane { overflow:visible; } }
 @media (max-width: 720px) { .document-review-wide { width:100%; }.review-split { grid-template-columns:1fr; }.review-source-pane { min-height:420px; }.review-form-pane { overflow:visible; } }
+.document-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.danger-button {
+  border-color: #dc2626;
+  color: #b91c1c;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #b91c1c;
+}
+
+.deleted-note {
+  margin: 16px;
+  padding: 12px 14px;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 13px;
+  line-height: 1.5;
+}

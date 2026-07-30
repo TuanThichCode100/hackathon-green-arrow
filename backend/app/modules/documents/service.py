@@ -450,6 +450,12 @@ def document_notification_feed(db: Session, user: dict, limit: int = 40) -> list
         elif event.action == "approved" and document.upload_status == "approved":
             title = "Văn bản đã được duyệt"
             subtitle = f"Đã xác nhận và công bố “{document.title}”."
+        elif event.action == "deleted" and document.upload_status == "deleted":
+            # A deleted document is private to the officer who deleted it.
+            if document.deleted_by != user_id:
+                continue
+            title = "Văn bản đã được đưa vào mục đã xóa"
+            subtitle = f"“{document.title}” được lưu giữ trong 30 ngày và có thể khôi phục."
         elif event.action == "restored" and document.upload_status == "approved":
             title = "Văn bản đã được khôi phục"
             subtitle = f"Đã khôi phục “{document.title}”."
@@ -535,7 +541,7 @@ def list_documents(db: Session, user: dict, status: str | None = None):
     if selected in {"processing", "pending_review", "failed"}:
         query = query.filter(Document.upload_status == selected, Document.uploaded_by == str(user.get("sub")))
     elif selected == "deleted":
-        query = query.filter(Document.upload_status == "deleted")
+        query = query.filter(Document.upload_status == "deleted", Document.deleted_by == str(user.get("sub")))
     else:
         query = query.filter(Document.upload_status == "approved")
     return query.order_by(Document.created_at.desc()).all()
