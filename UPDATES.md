@@ -233,3 +233,8 @@ flowchart LR
 
 - Bổ sung `backend/entrypoint.sh`: chạy `alembic upgrade head` trước khi khởi động Uvicorn.
 - Docker image backend chỉ nhận traffic sau khi migration thành công; migration thất bại làm container dừng để tránh chạy API trên schema cũ.
+
+## Giai đoạn 22 — Kiểm tra cấu hình mã hóa tài liệu
+
+- Xác thực khóa Fernet trước mọi thao tác mã hóa/giải mã tài liệu. Khóa sai trả HTTP 503 với mã `DOCUMENT_ENCRYPTION_MISCONFIGURED` thay vì lỗi 500.
+- Bổ sung placeholder rõ ràng trong `backend/.env.example`: cần khóa URL-safe Base64 giải mã thành đúng 32 byte.

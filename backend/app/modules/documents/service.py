@@ -7,6 +7,7 @@ and out of the Agent context.
 import hashlib
 import json
 import re
+import base64
 import uuid
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -37,11 +38,22 @@ def audit(db: Session, document_id: int, user: dict, action: str, detail: dict |
 
 
 def encrypt(content: bytes) -> bytes:
-    return Fernet(settings.DOCUMENT_ENCRYPTION_KEY.encode("utf-8")).encrypt(content)
+    return _fernet().encrypt(content)
 
 
 def decrypt(content: bytes) -> bytes:
-    return Fernet(settings.DOCUMENT_ENCRYPTION_KEY.encode("utf-8")).decrypt(content)
+    return _fernet().decrypt(content)
+
+
+def _fernet() -> Fernet:
+    """Fail closed with an actionable configuration error, never a 500."""
+    key = settings.DOCUMENT_ENCRYPTION_KEY.encode("utf-8")
+    try:
+        if len(base64.urlsafe_b64decode(key)) != 32:
+            raise ValueError("decoded key is not 32 bytes")
+        return Fernet(key)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail={"code": "DOCUMENT_ENCRYPTION_MISCONFIGURED", "message": "Khóa mã hóa tài liệu chưa hợp lệ. Cần khóa Fernet 32-byte dạng URL-safe Base64."}) from exc
 
 
 def storage_key(prefix: str, extension: str) -> str:
