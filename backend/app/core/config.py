@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     APP_NAME: str = "GreenForecast API"
     DATABASE_URL: str = "sqlite:///./data/greenforecast.db"
     LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = ""
+    LLM_MODEL: str = ""
+    GOOGLE_VISION_API_KEY: str = ""
     OPEN_METEO_BASE_URL: str = "https://api.open-meteo.com/v1"
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
     SECRET_KEY: str = "supersecret"
@@ -18,6 +21,8 @@ class Settings(BaseSettings):
     # Local encrypted storage keeps the feature usable in a development or
     # demo deployment that does not have Supabase Storage configured.
     DOCUMENT_STORAGE_DIR: str = str(Path(__file__).resolve().parents[2] / "data" / "uploads")
+    DOCUMENT_DRAFT_TTL_HOURS: int = 24
+    DOCUMENT_DELETE_RETENTION_DAYS: int = 30
 
     @property
     def supabase_admin_key(self) -> str:

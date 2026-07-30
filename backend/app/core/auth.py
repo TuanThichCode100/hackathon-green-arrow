@@ -29,7 +29,7 @@ def get_current_user_metadata(request: Request):
     user = verify_supabase_token_online(token)
     if user:
         meta = user.get("user_metadata", {})
-        return {"role": meta.get("role", "tinh"), "commune_id": meta.get("commune_id"), "sub": user.get("id")}
+        return {"role": meta.get("role", "tinh"), "commune_id": meta.get("commune_id"), "sub": user.get("id"), "name": meta.get("name") or user.get("email") or "Cán bộ"}
     raise HTTPException(status_code=401, detail="Unauthorized: Invalid or expired token")
 
 def get_current_user_role(metadata: dict = Depends(get_current_user_metadata)):

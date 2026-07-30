@@ -15,6 +15,7 @@ import RolesView from './dashboard/RolesView';
 import ResidentsDB from './ResidentsDB';
 import CommuneDetailSlideOver from './dashboard/CommuneDetailSlideOver';
 import UploadModal from './dashboard/UploadModal';
+import DocumentReviewModal from './dashboard/DocumentReviewModal';
 
 type ViewKey = 'map' | 'overview' | 'communes' | 'policy' | 'channels' | 'roles' | 'database';
 
@@ -30,6 +31,7 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
   const [emergency, setEmergency] = useState(false);
   const [detailId, setDetailId] = useState<string | number | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [reviewDocumentId, setReviewDocumentId] = useState<number | null>(null);
   const [clock, setClock] = useState('');
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'warning' | 'error' } | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -175,7 +177,8 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
           handleAction={handleAction}
         />
       )}
-      {uploadOpen && <UploadModal setUploadOpen={setUploadOpen} showToast={(message) => showToast(message)} />}
+      {uploadOpen && <UploadModal setUploadOpen={setUploadOpen} showToast={(message, tone) => showToast(message, tone as any)} onUploaded={setReviewDocumentId} />}
+      {reviewDocumentId && <DocumentReviewModal documentId={reviewDocumentId} communes={snapshot.communes.map((commune) => ({ id: Number(commune.id), name: commune.name }))} onClose={() => setReviewDocumentId(null)} onDone={() => { setReviewDocumentId(null); showToast('Đã cập nhật trạng thái văn bản.'); }} />}
       {toast && (
         <div className="toast" role="status">
           {toast.tone === 'success' ? <CheckCircle size={17} weight="fill" /> : toast.tone === 'warning' ? <WarningCircle size={17} weight="fill" /> : <XCircle size={17} weight="fill" />}

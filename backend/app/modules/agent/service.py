@@ -16,7 +16,7 @@ def draft_bulletin(db: Session, request):
     commune_info = [f"- Xã {c.name} (Dân số: {c.population}, Tọa độ: {c.lat}, {c.lng})" for c in communes]
     
     # Get recent documents for context (RAG fallback)
-    docs = db.query(Document).filter(Document.status == "active").limit(3).all()
+    docs = db.query(Document).filter(Document.status == "active", Document.upload_status == "approved").limit(3).all()
     doc_info = [f"- {d.title}: {d.llm_summary or 'Không có tóm tắt'}" for d in docs]
 
     prompt = f"""

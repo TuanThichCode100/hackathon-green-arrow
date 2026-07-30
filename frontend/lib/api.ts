@@ -155,10 +155,10 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
       return {
         code: p.id,
         title: p.title,
-        type: p.document_type,
-        by: 'Hệ thống',
-        start: new Date(p.created_at).toLocaleDateString(),
-        end: 'Không thời hạn',
+        type: p.doc_type,
+        by: p.issued_by,
+        start: p.start_date ? new Date(p.start_date).toLocaleDateString('vi-VN') : 'Chưa xác định',
+        end: p.end_date ? new Date(p.end_date).toLocaleDateString('vi-VN') : 'Không xác định',
         status: p.status,
         statusLabel: meta.label,
         pillStyle: pill(meta.color, meta.bg)

@@ -1,25 +1,12 @@
+import { useEffect, useState } from 'react';
 import { BookOpenText, FileArrowUp, Files } from '@phosphor-icons/react';
+import { API_BASE_URL } from '@/lib/api';
 import type { DashboardData, User } from './types';
 
+const filters = [{ key: 'approved', label: 'Đã duyệt' }, { key: 'processing', label: 'Đang xử lý' }, { key: 'pending_review', label: 'Chờ duyệt' }, { key: 'failed', label: 'Thất bại' }, { key: 'deleted', label: 'Đã xóa' }];
 export default function PolicyView({ m, user, setUploadOpen }: { m: DashboardData; user: User | null; setUploadOpen: (open: boolean) => void }) {
-  return (
-    <div className="view-page">
-      <div className="section-heading">
-        <div><h2>Văn bản chỉ đạo</h2><p>Ngữ cảnh hành chính được AI tham chiếu khi tạo dự thảo cảnh báo.</p></div>
-        {user && <button className="primary-button" onClick={() => setUploadOpen(true)}><FileArrowUp size={17} />Thêm văn bản</button>}
-      </div>
-      <section className="metrics-strip">
-        <div className="metric-block"><span className="metric-label">Còn hiệu lực</span><strong className="mono">{m.policyActive}</strong></div>
-        <div className="metric-block"><span className="metric-label">Sắp hết hạn</span><strong className="mono">{m.policyExpiring}</strong></div>
-        <div className="metric-block"><span className="metric-label">Hết hiệu lực</span><strong className="mono">{m.policyExpired}</strong></div>
-      </section>
-      <div className="table-wrap" style={{ marginTop: 22 }}>
-        <table className="data-table">
-          <thead><tr><th>Văn bản</th><th>Loại</th><th>Hiệu lực từ</th><th>Đến hết</th><th>Trạng thái</th></tr></thead>
-          <tbody>{m.policies.map((policy) => <tr key={policy.code}><td><strong>{policy.title}</strong><br /><span className="metric-label">{policy.code}</span></td><td>{policy.type}</td><td>{policy.start}</td><td>{policy.end}</td><td><span className={`status-pill ${policy.status === 'active' ? 'status-safe' : 'status-watch'}`}>{policy.statusLabel}</span></td></tr>)}</tbody>
-        </table>
-        {!m.policies.length && <div className="empty-state"><Files size={28} /><p>Chưa có văn bản chỉ đạo.</p>{!user && <span>Đăng nhập để quản lý kho văn bản.</span>}</div>}
-      </div>
-    </div>
-  );
+  const [status, setStatus] = useState('approved'); const [documents, setDocuments] = useState<any[] | null>(null);
+  useEffect(() => { if (!user) return; const token = localStorage.getItem('auth_token'); fetch(`${API_BASE_URL}/api/documents?status=${status}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then((res) => res.json()).then((body) => setDocuments(body.data || [])).catch(() => setDocuments([])); }, [status, user]);
+  const rows = documents ?? (status === 'approved' ? m.policies : []);
+  return <div className="view-page"><div className="section-heading"><div><h2>Văn bản chỉ đạo</h2><p>Chỉ văn bản đã xác nhận mới được dùng khi tạo dự thảo cảnh báo.</p></div>{user?.role === 'tinh' && <button className="primary-button" onClick={() => setUploadOpen(true)}><FileArrowUp size={17} />Thêm văn bản</button>}</div><section className="metrics-strip"><div className="metric-block"><span className="metric-label">Còn hiệu lực</span><strong className="mono">{m.policyActive}</strong></div><div className="metric-block"><span className="metric-label">Sắp hết hạn</span><strong className="mono">{m.policyExpiring}</strong></div><div className="metric-block"><span className="metric-label">Hết hiệu lực</span><strong className="mono">{m.policyExpired}</strong></div></section><div className="document-filters" role="tablist">{filters.map((filter) => <button key={filter.key} role="tab" aria-selected={status === filter.key} onClick={() => setStatus(filter.key)}>{filter.label}</button>)}</div><div className="table-wrap" style={{ marginTop: 14 }}><table className="data-table"><thead><tr><th>Văn bản</th><th>Loại</th><th>Hiệu lực</th><th>Trạng thái</th></tr></thead><tbody>{rows.map((policy: any) => <tr key={policy.id || policy.code}><td><strong>{policy.title}</strong><br /><span className="metric-label">{policy.document_number || policy.code}</span></td><td>{policy.doc_type || policy.type}</td><td>{policy.start_date || policy.start || 'Chưa xác định'}</td><td><span className="status-pill status-safe">{filters.find((item) => item.key === (policy.upload_status || status))?.label || policy.statusLabel}</span></td></tr>)}</tbody></table>{!rows.length && <div className="empty-state"><Files size={28} /><p>Không có văn bản ở trạng thái này.</p></div>}</div></div>;
 }

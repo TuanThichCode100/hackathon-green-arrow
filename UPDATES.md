@@ -188,3 +188,43 @@ Tài liệu này ghi lại toàn bộ các tính năng, module và kiến trúc 
 - Sửa `GET /api/users` để đọc trực tiếp danh sách do Supabase SDK hiện tại trả về, đồng thời vẫn tương thích với response cũ có thuộc tính `.users`.
 - Bổ sung regression test `backend/test_users_router.py` cho contract trả về kiểu `list`, ngăn lỗi `AttributeError: 'list' object has no attribute 'users'` tái diễn.
 - Rebuild backend container và xác nhận `/health` healthy; lời gọi Supabase Admin `list_users()` trong container chạy thành công mà không hiển thị secret hoặc dữ liệu tài khoản.
+
+## Giai đoạn 17 — Vòng đời an toàn cho văn bản chỉ đạo
+
+- Thêm migration `0002_document_workflow` với trạng thái upload, dữ liệu bản nháp có hạn, hash nguồn, xóa mềm và các bảng audit/yêu cầu xem bản gốc.
+- Tách văn bản chính thức (`approved`) khỏi bản nháp `processing`, `pending_review`, `failed`; chỉ văn bản đã duyệt mới xuất hiện ở danh sách mặc định và được AI Agent sử dụng.
+- Bản nháp OCR/SLM được mã hóa riêng, chỉ người upload xem được trong 24 giờ và bị xóa khi xác nhận, hủy hoặc hết hạn; văn bản xóa mềm được giữ 30 ngày.
+- API upload nay tạo tác vụ xử lý nền, có endpoint xem/sửa/xác nhận/hủy bản nháp, xóa mềm, khôi phục và gửi yêu cầu xem bản gốc.
+- Thêm worker dọn dữ liệu quá hạn theo giờ và giới hạn upload PDF, DOCX, TXT, JPG, PNG, tối đa 20 MB.
+
+```mermaid
+flowchart LR
+  A["Upload tệp"] --> B["Lưu tạm mã hóa"]
+  B --> C["Trích text trực tiếp hoặc OCR"]
+  C --> D["9router SLM trả JSON"]
+  D --> E["Bản xem trước: pending_review"]
+  E -->|"Xác nhận"| F["approved: lưu dữ liệu chính thức"]
+  E -->|"Hủy / quá 24h"| G["Xóa bản nháp và tệp tạm"]
+  F -->|"Xóa mềm"| H["deleted: giữ 30 ngày"]
+  H -->|"Khôi phục"| F
+  H -->|"Hết hạn"| I["Xóa vĩnh viễn"]
+```
+
+## Giai đoạn 18 — Bản xem trước có cán bộ trong vòng kiểm soát
+
+- Thay upload cũ bằng luồng chọn tệp PDF/DOCX/TXT/JPG/PNG rồi chờ bản nháp xử lý; không còn yêu cầu cán bộ nhập metadata trước khi hệ thống đọc tài liệu.
+- Bổ sung modal xem trước UI hóa: trường nguồn bắt buộc, bằng chứng trang trích, chỉnh sửa trực tiếp, tick địa bàn, chính sách hiển thị bản gốc và xác nhận/hủy rõ ràng.
+- Thêm tài liệu `docs/DATA_GOVERNANCE.md` mô tả mã hóa, 9router SLM, OCR, retention, phân quyền và audit.
+- Frontend build production thành công sau khi nối modal review vào Dashboard.
+
+## Giai đoạn 19 — Quyền xem bản gốc theo yêu cầu
+
+- Bổ sung API gửi yêu cầu xem bản gốc, cấp tỉnh duyệt/từ chối qua web và endpoint stream nội dung chỉ khi quyền còn hiệu lực.
+- Yêu cầu không phản hồi tự hết hạn sau 24 giờ; quyền được duyệt cũng hết hạn sau 24 giờ. Cán bộ tỉnh được xem ngay khi văn bản đã bật chính sách tương ứng.
+- Việc xem bản gốc được ghi audit event; Storage không cấp URL public hay endpoint tải xuống.
+
+## Giai đoạn 20 — Danh sách văn bản theo vòng đời
+
+- Gộp các trạng thái Đã duyệt, Đang xử lý, Chờ duyệt, Thất bại và Đã xóa vào cùng trang Văn bản chỉ đạo bằng bộ lọc trạng thái.
+- Cấp tỉnh mới thấy nút upload; API vẫn áp dụng giới hạn người upload cho bản nháp và trạng thái thất bại.
+- Xác nhận lại production build Next.js thành công sau khi bổ sung danh sách và modal review.

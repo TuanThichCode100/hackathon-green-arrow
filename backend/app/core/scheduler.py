@@ -3,6 +3,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.external.open_meteo import OpenMeteoClient
 from app.core.database import SessionLocal, check_database_connection
 from app.modules.predictions.models import Prediction
+from app.modules.documents.service import cleanup_expired_documents
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,23 @@ async def fetch_weather_task():
     except Exception as e:
         logger.error(f"Error fetching weather: {e}")
 
+
+def cleanup_documents_task():
+    if not check_database_connection():
+        return
+    db = SessionLocal()
+    try:
+        cleanup_expired_documents(db)
+    except Exception as exc:
+        logger.error("Document cleanup failed: %s", exc)
+    finally:
+        db.close()
+
 def start_scheduler():
     scheduler = AsyncIOScheduler()
     # Chạy mỗi 1 giờ
     scheduler.add_job(fetch_weather_task, 'interval', hours=1)
+    scheduler.add_job(cleanup_documents_task, 'interval', hours=1)
     scheduler.start()
     logger.info("Scheduler started. Open-Meteo will be called every 1 hour.")
     return scheduler
