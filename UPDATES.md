@@ -698,3 +698,23 @@ flowchart LR
     E --> G["Làm mới danh sách"]
     F --> G
 ```
+
+## Giai đoạn 50 — Đồng bộ sổ dân cư vào bản đồ / tổng quan (31/07/2026)
+
+- Chính thức quy ước `residents` là nguồn duy nhất cho số liệu dân số. Danh mục `communes` chỉ lưu thông tin địa lý và trạng thái vận hành; cột dân số cũ không còn được dùng để hiển thị hay tính toán.
+- API địa bàn tính số dân theo từng xã/phường bằng cách đếm bản ghi trong `residents`, nên bản đồ và màn hình địa bàn tự cập nhật sau khi thêm, sửa, chuyển xã hoặc import CSV.
+- Tổng quan tính dân số toàn tỉnh từ cùng nguồn; thống kê dân tộc tiếp tục nhóm trực tiếp từ sổ dân cư.
+- Không còn quy đổi số lượng tin đã gửi thành tỷ lệ đã nhận. Khi chưa có xác nhận theo từng người dân, KPI hiển thị “chưa có số liệu xác thực” thay vì số liệu ước đoán.
+- Bổ sung regression test chống việc vô tình quay lại dùng dân số tĩnh của `communes`.
+
+```mermaid
+flowchart LR
+    A["Thêm / sửa / import dân cư"] --> B["Bảng residents"]
+    B --> C["Đếm theo commune_id"]
+    C --> D["API địa bàn"]
+    C --> E["Tổng quan dân số"]
+    B --> F["Thống kê dân tộc"]
+    D --> G["Bản đồ và màn hình địa bàn"]
+    E --> H["KPI tổng quan"]
+    I["Xác nhận nhận tin theo từng cư dân"] --> J["KPI đã nhận / chưa phản hồi"]
+```

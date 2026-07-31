@@ -88,13 +88,12 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
 
   // Re-calculate KPIs based on API communes
   const totalPop = communes.reduce((sum, commune) => sum + commune.pop, 0);
-  const totalRecv = communes.reduce((sum, commune) => sum + (commune.received || 0), 0);
-  const totalNot = totalPop - totalRecv;
+  const hasVerifiedRecipientData = communes.some((commune) => commune.received !== null);
+  const totalRecv = communes.reduce((sum, commune) => sum + (commune.received ?? 0), 0);
   const alertCount = communes.filter((c) => c.statusLabel === 'Cảnh báo').length;
   
   // Use real headmen count if available
   const headmenTotal = ov.headmen_total || 0;
-  const headmenConfirmed = ov.headmen_confirmed || 0;
 
   const kpiCard = 'background:#fff; border:1px solid #E1E7EE; border-radius:14px; padding:15px 17px;';
   const kpiCardAlert = 'background:#fff; border:1px solid #F6C6C6; border-radius:14px; padding:15px 17px; box-shadow:0 0 0 1px #F6C6C6;';
@@ -102,13 +101,13 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
   const overviewPopulation = finiteNumber(ov.total_pop);
   const ovPop = overviewPopulation && overviewPopulation > 0 ? overviewPopulation : (totalPop > 0 ? totalPop : null);
   const overviewRate = ovPop === null ? null : finiteNumber(ov.recv_rate);
-  const calculatedRate = ovPop && totalRecv >= 0 ? totalRecv / ovPop : null;
+  const calculatedRate = ovPop && hasVerifiedRecipientData ? totalRecv / ovPop : null;
   const recvRate = overviewRate ?? calculatedRate;
   const ovRecv = ovPop !== null && recvRate !== null ? Math.round(Math.max(0, Math.min(1, recvRate)) * ovPop) : null;
   const overviewNotResponded = finiteNumber(ov.not_responded);
   const ovNot = overviewNotResponded ?? (ovPop !== null && ovRecv !== null ? Math.max(0, ovPop - ovRecv) : null);
-  const hConf = finiteNumber(ov.headmen_confirmed) ?? headmenConfirmed;
-  const hasHeadmenData = headmenTotal > 0;
+  const hConf = finiteNumber(ov.headmen_confirmed);
+  const hasHeadmenData = headmenTotal > 0 && hConf !== null;
   const aAct = ov.active_alerts !== undefined ? ov.active_alerts : alertCount;
 
   const kpis = [

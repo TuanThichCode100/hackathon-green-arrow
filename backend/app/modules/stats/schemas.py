@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 class ChannelStats(BaseModel):
     name: str
@@ -13,8 +13,8 @@ class ChannelStatsResponse(BaseModel):
 
 class OverviewResponse(BaseModel):
     total_pop: int
-    recv_rate: float
-    not_responded: int
+    recv_rate: Optional[float]
+    not_responded: Optional[int]
     headmen_total: int
-    headmen_confirmed: int
+    headmen_confirmed: Optional[int]
     active_alerts: int

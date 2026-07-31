@@ -18,7 +18,7 @@ def get_one(commune_id: int, db: Session = Depends(get_db)):
     comm = service.get_commune(db, commune_id)
     if not comm:
         raise HTTPException(status_code=404, detail="Commune not found")
-    comm.hamlets = service.get_hamlets(db, commune_id)
+    comm["hamlets"] = service.get_hamlets(db, commune_id)
     return {"data": comm}
 
 @router.post("/seed", response_model=APIResponse[str])

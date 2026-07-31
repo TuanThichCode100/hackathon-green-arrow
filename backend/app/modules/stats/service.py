@@ -3,7 +3,7 @@ from sqlalchemy import func
 from datetime import datetime, timedelta
 from app.modules.communes.models import Commune, Hamlet
 from app.modules.residents.models import Resident
-from app.modules.notifications.models import Notification
+from app.modules.notifications.models import Notification, NotificationRecipient
 from app.modules.agent.models import AgentDecision
 
 def get_start_date(time_range: str) -> datetime:
@@ -20,25 +20,39 @@ def get_start_date(time_range: str) -> datetime:
 
 def calc_overview(db: Session, time_range: str):
     start_date = get_start_date(time_range)
-    total_pop = db.query(func.sum(Commune.population)).scalar() or 0
-    
-    # Calculate receive rate based on notifications.
-    sent_notifications = db.query(func.sum(Notification.recipient_count)).filter(
-        Notification.status == 'delivered',
-        Notification.sent_at >= start_date
-    ).scalar() or 0
-    
-    recv_rate = min(1.0, sent_notifications / total_pop) if total_pop > 0 else 0
-    not_responded = int(total_pop * (1 - recv_rate))
-    
+    total_pop = db.query(func.count(Resident.id)).scalar() or 0
+
+    # Only actual per-resident receipts are evidence of delivery. Aggregate
+    # notification target counts must not be presented as confirmed receipts.
+    receipt_query = db.query(NotificationRecipient).filter(
+        NotificationRecipient.received_at >= start_date,
+        NotificationRecipient.status.in_(["received", "delivered"]),
+    )
+    has_receipt_evidence = receipt_query.first() is not None
+    confirmed_residents = (
+        db.query(func.count(func.distinct(NotificationRecipient.resident_id)))
+        .filter(
+            NotificationRecipient.received_at >= start_date,
+            NotificationRecipient.status.in_(["received", "delivered"]),
+        )
+        .scalar()
+        or 0
+    )
+    recv_rate = (
+        min(1.0, confirmed_residents / total_pop)
+        if has_receipt_evidence and total_pop > 0
+        else None
+    )
+    not_responded = int(total_pop * (1 - recv_rate)) if recv_rate is not None else None
+
     headmen_total = db.query(func.count(Hamlet.id)).scalar() or 0
-    headmen_confirmed = int(headmen_total * recv_rate)
+    headmen_confirmed = int(headmen_total * recv_rate) if recv_rate is not None else None
     
     active_alerts = db.query(func.count(Commune.id)).filter(Commune.notification_status.in_(["sent", "delivered"])).scalar() or 0
 
     return {
         "total_pop": int(total_pop),
-        "recv_rate": round(recv_rate, 2),
+        "recv_rate": round(recv_rate, 2) if recv_rate is not None else None,
         "not_responded": not_responded,
         "headmen_total": headmen_total,
         "headmen_confirmed": headmen_confirmed,
