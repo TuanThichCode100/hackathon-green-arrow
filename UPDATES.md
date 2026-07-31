@@ -508,3 +508,87 @@ flowchart LR
   G -->|Không tiếp nhận| J[dismissed + lý do]
   H --> F
 ```
+## Giai đoạn 39 — Kiểm chứng kết nối AI qua 9router
+
+- Đã xác nhận `LLM_BASE_URL`, `LLM_API_KEY` và `LLM_MODEL` đều có cấu hình; adapter AI đã sẵn sàng gọi API theo chuẩn OpenAI-compatible và luôn trả thông báo nghiệp vụ thân thiện khi không phân tích được.
+- Chẩn đoán với văn bản mẫu không nhạy cảm cho thấy lỗi là kết nối hạ tầng, không phải OCR/JSON: dịch vụ 9router/OpenClaw không lắng nghe tại `127.0.0.1:20128` trên máy chủ. Vì vậy backend Docker nhận `Connection refused` qua gateway `172.19.0.1`.
+- Cấu hình backend đã chuẩn hóa đường gọi container → máy chủ là `http://172.19.0.1:20128/v1`. Để hoàn tất, cần chạy 9router/OpenClaw và cho API lắng nghe trên địa chỉ có thể truy cập từ Docker (ví dụ `0.0.0.0:20128`), sau đó thực hiện lại probe an toàn.
+
+```mermaid
+flowchart LR
+  A[Backend Docker] --> B[172.19.0.1:20128/v1]
+  B --> C{9router/OpenClaw đang lắng nghe?}
+  C -->|Chưa| D[AI trả thông báo thân thiện và cán bộ tự bổ sung]
+  C -->|Có| E[Chat completions JSON]
+  E --> F[Kiểm tra schema]
+  F --> G[Bản nháp để cán bộ xác nhận]
+```
+## Giai đoạn 40 — Hoàn tất kết nối model qua 9router
+
+- Đã xác định 9router thực tế lắng nghe tại `0.0.0.0:20128`; cổng `20128` trên Windows và endpoint `/v1/models` đều phản hồi `200`.
+- Sự cố còn lại là định tuyến Docker Desktop: `172.19.0.1` là gateway mạng Linux, không phải máy Windows. Backend đã đổi sang `http://host.docker.internal:20128/v1`, hostname được Docker Desktop phân giải tới `192.168.65.254` và đã kiểm tra truy cập thành công từ container.
+- Probe cuối cùng dùng văn bản mẫu không nhạy cảm đã nhận JSON hợp lệ từ model. Adapter trả trạng thái `completed` cùng các trường: số văn bản, loại văn bản, cơ quan ban hành, hiệu lực, tóm tắt và việc cần thực hiện.
+- Không in hoặc ghi khóa API vào log, source hay tài liệu cập nhật.
+
+```mermaid
+flowchart LR
+  A[Backend container] --> B[host.docker.internal:20128/v1]
+  B --> C[9router trên Windows]
+  C --> D[Model được chọn]
+  D --> E[JSON trích xuất]
+  E --> F[Kiểm tra schema + làm sạch dữ liệu]
+  F --> G[Bản nháp để cán bộ xác nhận]
+```
+## Giai đoạn 41 — Chặn lỗi lưu văn bản thiếu ngày hiệu lực
+
+- Chẩn đoán từ log cho thấy lỗi `IntegrityError` khi duyệt văn bản không phải lỗi SQLAlchemy: payload duyệt có `start_date = null` trong khi cột `documents.start_date` là bắt buộc.
+- Hàm `validate_approval` trước đây chưa kiểm tra trường này. Đã thêm `start_date` vào dữ liệu bắt buộc và đổi thông báo kỹ thuật thành thông báo nghiệp vụ: **Cần xác nhận đủ: Hiệu lực từ ngày**.
+- Giao diện kiểm tra văn bản cũng chặn ngay khi cán bộ bấm xác nhận mà bỏ trống ngày hiệu lực, giúp không cần gửi request lỗi tới server.
+- Thêm regression test `test_document_approval_validation.py`. Harness tái hiện trước sửa từng chấp nhận `start_date=None`; sau sửa trả HTTP 422 đúng thông báo. Frontend build thành công, Docker đã rebuild và 5 backend tests đạt.
+
+```mermaid
+flowchart LR
+  A[Bản nháp có ngày hiệu lực rỗng] --> B{Cán bộ bấm xác nhận}
+  B --> C[Chặn tại giao diện]
+  C --> D[Hiển thị yêu cầu bổ sung ngày]
+  B --> E[API validate_approval]
+  E --> F{start_date có giá trị?}
+  F -->|Không| G[422 thông báo nghiệp vụ]
+  F -->|Có| H[Cập nhật CSDL và duyệt văn bản]
+```
+## Giai đoạn 42 — Ổn định kết nối Supabase PostgreSQL
+
+- Chẩn đoán lỗi `SSL SYSCALL error: EOF detected`: đây là kết nối PostgreSQL/TLS bị Supabase Pooler đóng đột ngột trong lúc backend tái sử dụng `QueuePool`, không liên quan tới câu lệnh `SELECT documents` hay nội dung văn bản.
+- Backend dùng Supabase Pooler tại cổng 5432 nhưng trước đây chưa bật kiểm tra kết nối sống. Đã thêm `pool_pre_ping=True` để loại bỏ kết nối stale trước mỗi checkout, `pool_recycle=1800` để thay kết nối cũ sau 30 phút và timeout kết nối/pool có giới hạn.
+- Không thêm retry tự động cho lệnh ghi/duyệt văn bản nhằm tránh nguy cơ ghi hoặc audit trùng. Sự cố hạ tầng diện rộng vẫn được trả về rõ ràng thay vì che giấu.
+- Thêm regression test `test_database_pool.py`; 6 backend tests đạt và loop 50 truy vấn `documents.id = 12` đạt 50/50, không có `SSL EOF`.
+
+```mermaid
+flowchart LR
+  A[Request cần CSDL] --> B[SQLAlchemy QueuePool]
+  B --> C{Kết nối TLS còn sống?}
+  C -->|Có| D[Thực hiện truy vấn]
+  C -->|Không / EOF| E[pool_pre_ping loại bỏ kết nối cũ]
+  E --> F[Tạo kết nối Supabase mới]
+  F --> D
+  D --> G[Trả kết quả nghiệp vụ]
+```
+## Giai đoạn 43 — Sửa tương tác lưu nháp và xác nhận văn bản
+
+- Tái hiện từ log với văn bản `13`: **Lưu bản nháp** đã gọi đúng `PUT /api/documents/13/preview` và nhận `200 OK`; không có `POST /approve` khi cán bộ bấm xác nhận vì bản nháp thiếu `start_date`.
+- Bản nháp thiếu ngày hiệu lực do AI không nhận diện được trường này. Điều kiện chặn xác nhận là đúng nghiệp vụ nhưng trước đây UI không hướng dẫn đủ rõ, khiến thao tác có cảm giác không phản hồi.
+- Tách trạng thái thao tác: lưu nháp chỉ hiển thị **Đang lưu bản nháp…**, xác nhận chỉ hiển thị **Đang xác nhận…**. Hai nút bị khóa đồng thời trong lúc có request để tránh đúp thao tác, nhưng không còn dùng sai nhãn.
+- Khi thiếu ngày hiệu lực, giao diện highlight ô **Hiệu lực từ**, đưa focus đến ô này và nêu rõ yêu cầu; khi lưu nháp thành công, hiển thị thông báo xác nhận để cán bộ tiếp tục chỉnh sửa hoặc xác nhận.
+- Kiểm tra: frontend TypeScript/Next.js build thành công và Docker backend/frontend đã được rebuild.
+
+```mermaid
+flowchart LR
+  A[Cán bộ bấm Lưu bản nháp] --> B[PUT /preview]
+  B --> C[Đang lưu bản nháp]
+  C --> D[200 OK + thông báo đã lưu]
+  E[Cán bộ bấm Xác nhận] --> F{Có Hiệu lực từ?}
+  F -->|Không| G[Focus + highlight trường thiếu]
+  F -->|Có| H[POST /approve]
+  H --> I[Đang xác nhận]
+  I --> J[Văn bản đã duyệt]
+```

@@ -4,9 +4,14 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.core.config import settings
 
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {"connect_timeout": 10}
+engine_options = {"connect_args": connect_args}
+if not settings.DATABASE_URL.startswith("sqlite"):
+    # Supabase Pooler can close idle TLS connections. Validate a connection
+    # before each checkout and replace it before it becomes stale.
+    engine_options.update(pool_pre_ping=True, pool_recycle=1800, pool_timeout=30)
 
-engine = create_engine(settings.DATABASE_URL, connect_args=connect_args)
+engine = create_engine(settings.DATABASE_URL, **engine_options)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 _database_status = {"available": False, "detail": "Database has not been checked."}

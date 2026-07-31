@@ -552,12 +552,17 @@ def can_manage_draft(document: Document, user: dict) -> bool:
 
 
 def validate_approval(draft: dict):
-    required = ("document_number", "title", "doc_type", "issued_by", "issued_date", "scope_type")
+    required = ("document_number", "title", "doc_type", "issued_by", "issued_date", "start_date", "scope_type")
     missing = [key for key in required if not draft.get(key)]
     if draft.get("scope_type") == "communes" and not draft.get("commune_ids"):
         missing.append("commune_ids")
     if missing:
-        raise HTTPException(status_code=422, detail="Cần xác nhận đủ: " + ", ".join(missing))
+        labels = {
+            "document_number": "Số/ký hiệu", "title": "Tiêu đề", "doc_type": "Loại văn bản",
+            "issued_by": "Cơ quan ban hành", "issued_date": "Ngày ban hành",
+            "start_date": "Hiệu lực từ ngày", "scope_type": "Địa bàn áp dụng", "commune_ids": "Địa bàn áp dụng",
+        }
+        raise HTTPException(status_code=422, detail="Cần xác nhận đủ: " + ", ".join(labels[key] for key in missing))
 
 
 def apply_draft(document: Document, draft: dict):
