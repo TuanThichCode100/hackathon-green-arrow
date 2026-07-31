@@ -26,6 +26,10 @@ class ResidentImportTest(TestCase):
                 literate=True,
             )
         )
+        self.db.add_all([
+            Commune(id=1, name="Thanh Nưa", lat=21.4, lng=103.0),
+            Commune(id=2, name="Mường Nhé", lat=22.2, lng=102.4),
+        ])
         self.db.commit()
 
     def tearDown(self):
@@ -51,6 +55,16 @@ class ResidentImportTest(TestCase):
                 {"row": 4, "reason": "Số điện thoại bị trùng trong tệp CSV."},
             ],
         )
+
+    def test_import_resolves_commune_from_csv_name_when_no_filter_is_selected(self):
+        result = service.import_residents(
+            self.db,
+            [{"source_row": 2, "commune_name": "Mường Nhé", "name": "Vàng A Páo", "phone": "0976543210", "ethnic": "Mông", "literate": True}],
+        )
+
+        resident = self.db.query(Resident).filter_by(phone="0976543210").one()
+        self.assertEqual(result["imported"], 1)
+        self.assertEqual(resident.commune_id, 2)
 
     def test_commune_scope_hides_a_resident_from_another_commune(self):
         resident = Resident(

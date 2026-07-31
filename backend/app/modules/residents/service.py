@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.modules.residents.models import Resident
+from app.modules.communes.models import Commune
 
 
 PHONE_PATTERN = re.compile(r"^0\d{9}$")
@@ -63,6 +64,12 @@ def delete_resident(db: Session, resident_id: int, commune_id: int | None = None
 
 def import_residents(db: Session, records: list[dict]):
     """Import valid CSV rows and return per-row issues without discarding the batch."""
+    communes = db.query(Commune.id, Commune.name).all()
+    commune_ids = {commune_id for commune_id, _ in communes}
+    commune_names = {
+        re.sub(r"\s+", " ", name.strip()).casefold(): commune_id
+        for commune_id, name in communes
+    }
     normalized_phones = [re.sub(r"\s+", "", row.get("phone", "")) for row in records]
     existing_phones = {
         phone for (phone,) in db.query(Resident.phone).filter(Resident.phone.in_(normalized_phones))
@@ -74,7 +81,16 @@ def import_residents(db: Session, records: list[dict]):
         name = (row.get("name") or "").strip()
         phone = re.sub(r"\s+", "", row.get("phone") or "")
         ethnic = (row.get("ethnic") or "").strip()
-        if len(name) < 2:
+        commune_id = row.get("commune_id")
+        commune_name = re.sub(r"\s+", " ", (row.get("commune_name") or "").strip()).casefold()
+        if commune_id is None and commune_name:
+            commune_id = commune_names.get(commune_name)
+
+        if commune_id is None:
+            errors.append({"row": source_row, "reason": "Chưa có xã/phường cho bản ghi này."})
+        elif commune_id not in commune_ids:
+            errors.append({"row": source_row, "reason": "Xã/phường không tồn tại trong danh mục hiện hành."})
+        elif len(name) < 2:
             errors.append({"row": source_row, "reason": "Họ và tên cần có ít nhất 2 ký tự."})
         elif not PHONE_PATTERN.fullmatch(phone):
             errors.append({"row": source_row, "reason": "Số điện thoại phải có 10 chữ số và bắt đầu bằng 0."})
@@ -86,7 +102,7 @@ def import_residents(db: Session, records: list[dict]):
             errors.append({"row": source_row, "reason": "Số điện thoại bị trùng trong tệp CSV."})
         else:
             accepted_phones.add(phone)
-            accepted.append({"commune_id": row["commune_id"], "name": name, "phone": phone, "ethnic": ethnic, "literate": bool(row.get("literate", True))})
+            accepted.append({"commune_id": commune_id, "name": name, "phone": phone, "ethnic": ethnic, "literate": bool(row.get("literate", True))})
 
     try:
         if accepted:

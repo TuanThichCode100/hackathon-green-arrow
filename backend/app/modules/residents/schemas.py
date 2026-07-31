@@ -29,7 +29,8 @@ class ResidentResponse(ResidentCreate):
 class ResidentImportRecord(BaseModel):
     """One parsed CSV row; business validation is intentionally per-row."""
 
-    commune_id: int
+    commune_id: Optional[int] = None
+    commune_name: str = ""
     name: str = ""
     phone: str = ""
     ethnic: str = ""

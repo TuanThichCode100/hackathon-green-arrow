@@ -647,3 +647,20 @@ flowchart LR
     E --> G["Báo cáo số đã nhập / bỏ qua"]
     F --> G
 ```
+
+## Giai đoạn 47 — Xem toàn bộ dân cư và import đa địa bàn (31/07/2026)
+
+- Bộ lọc xã/phường của cán bộ tỉnh mặc định là **Tất cả xã/phường**; không chọn địa bàn chỉ ảnh hưởng phạm vi xem, không còn làm danh sách trống hoặc chặn thao tác một cách mơ hồ.
+- Form thêm dân cư của cán bộ tỉnh có ô chọn xã/phường ngay trong form, nên cán bộ vẫn thêm được người dân khi đang xem toàn bộ.
+- CSV mẫu có cột `Xã/phường`; khi chưa lọc một địa bàn, backend đối chiếu tên xã/phường của từng dòng với danh mục chuẩn để nhập nhiều địa bàn trong một tệp.
+- Nếu CSV thiếu cột địa bàn khi đang xem tất cả, giao diện chỉ rõ hai cách xử lý: thêm cột `Xã/phường` hoặc lọc một địa bàn trước khi import.
+- Kiểm tra: frontend build thành công; 11 regression tests backend đạt, gồm đối chiếu địa bàn từ tên trong CSV.
+
+```mermaid
+flowchart LR
+    A["Không chọn bộ lọc"] --> B["Hiển thị toàn bộ dân cư"]
+    A --> C["CSV có cột Xã/phường"]
+    C --> D["Đối chiếu tên với danh mục 45 địa bàn"]
+    D --> E["Lưu từng dòng vào đúng xã/phường"]
+    F["Đã chọn một địa bàn"] --> G["Áp dụng địa bàn đó cho toàn bộ tệp"]
+```
