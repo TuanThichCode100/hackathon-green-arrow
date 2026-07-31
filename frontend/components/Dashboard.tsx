@@ -165,7 +165,7 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
           {view === 'policy' && <PolicyView key={policyRefresh} m={snapshot} user={user} setUploadOpen={setUploadOpen} />}
           {view === 'channels' && <ChannelsView m={snapshot} />}
           {view === 'roles' && <RolesView user={user} />}
-          {view === 'database' && <ResidentsDB isProv={user?.role === 'tinh'} showToast={showToast} communesData={snapshot.communes} />}
+          {view === 'database' && <ResidentsDB isProv={user?.role === 'tinh'} assignedCommuneId={user?.commune_id} showToast={showToast} communesData={snapshot.communes} />}
           {view === 'feedback' && <FeedbackView user={user} showToast={showToast} />}
         </main>
       </section>

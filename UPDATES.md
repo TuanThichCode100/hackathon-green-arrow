@@ -628,3 +628,22 @@ flowchart LR
     C --> D["GET /api/communes trả đủ 45 đơn vị"]
     D --> E["Bản xem trước hiển thị đủ ô chọn địa bàn"]
 ```
+
+## Giai đoạn 46 — Hoàn thiện nhập và quản lý dữ liệu dân cư (31/07/2026)
+
+- Làm rõ form thêm/sửa dân cư: nhãn trường nêu dữ liệu cần điền, còn placeholder chỉ hiển thị ví dụ; số điện thoại và họ tên được kiểm tra trước khi lưu.
+- Bổ sung **Tải CSV mẫu**, hướng dẫn cấu trúc cột và giới hạn 500 bản ghi mỗi lần import.
+- Import CSV hiện xử lý độc lập từng dòng hợp lệ: trả số bản ghi đã nhập, số bị bỏ qua và lý do theo số dòng (thiếu dữ liệu, sai số điện thoại, trùng trong tệp hoặc đã tồn tại).
+- Tài khoản cán bộ xã hiển thị đúng xã/phường được phân công và backend chặn thao tác sửa/xóa dữ liệu ngoài địa bàn phụ trách.
+- Kiểm tra: frontend production build thành công; 10 regression tests backend đạt, gồm luồng import và giới hạn quyền theo xã/phường.
+
+```mermaid
+flowchart LR
+    A["Cán bộ chọn xã/phường và tệp CSV"] --> B["Kiểm tra hàng tiêu đề"]
+    B --> C["Gửi từng dòng kèm số dòng nguồn"]
+    C --> D{"Dữ liệu hợp lệ và không trùng?"}
+    D -->|"Có"| E["Lưu bản ghi dân cư"]
+    D -->|"Không"| F["Ghi lý do bỏ qua theo dòng"]
+    E --> G["Báo cáo số đã nhập / bỏ qua"]
+    F --> G
+```
