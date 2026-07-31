@@ -664,3 +664,18 @@ flowchart LR
     D --> E["Lưu từng dòng vào đúng xã/phường"]
     F["Đã chọn một địa bàn"] --> G["Áp dụng địa bàn đó cho toàn bộ tệp"]
 ```
+
+## Giai đoạn 48 — Hiển thị đúng dữ liệu dân cư từ API (31/07/2026)
+
+- Sửa lỗi frontend đọc nhầm hai lần lớp `data` của phản hồi API: `fetcher` đã trích `json.data`, còn màn hình dân cư lại tiếp tục đọc `.data`, khiến dữ liệu trả về thành danh sách rỗng trên UI.
+- Bổ sung cột **Xã/phường** trong bảng dân cư để đối chiếu trực quan địa bàn của từng bản ghi với bộ lọc đang dùng.
+- Chẩn đoán xác nhận backend đọc được 3 bản ghi Supabase và API trả HTTP 200; các bản ghi hiện có thuộc xã Chiềng Sinh (`commune_id = 5`).
+- Kiểm tra: frontend production build thành công sau khi sửa.
+
+```mermaid
+flowchart LR
+    A["Supabase residents"] --> B["API bọc { data: ... }"]
+    B --> C["fetcher trích json.data một lần"]
+    C --> D["ResidentsDB dùng trực tiếp danh sách"]
+    D --> E["Bảng hiển thị dân cư và xã/phường"]
+```
