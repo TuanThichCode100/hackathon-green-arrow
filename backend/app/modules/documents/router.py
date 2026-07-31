@@ -77,7 +77,7 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
         raise HTTPException(status_code=422, detail="Chỉ hỗ trợ PDF, DOCX, TXT, JPG hoặc PNG")
     key = service.storage_key("originals", extension.lstrip("."))
     service.save_encrypted(key, content)
-    document = Document(code=f"DRAFT-{hashlib.sha256(content).hexdigest()[:8].upper()}", title="Đang phân tích", doc_type="Chỉ đạo", issued_by="Chưa xác định", file_path=key, start_date=datetime.utcnow().date(), end_date=datetime.utcnow().date(), status="draft", upload_status="processing", source_hash=hashlib.sha256(content).hexdigest(), original_filename=file.filename, original_mime_type=file.content_type, uploaded_by=str(user.get("sub")), uploaded_by_name=service.actor_name(user), draft_expires_at=datetime.utcnow() + timedelta(hours=settings.DOCUMENT_DRAFT_TTL_HOURS))
+    document = Document(code=f"DRAFT-{hashlib.sha256(content).hexdigest()[:8].upper()}", title="Đang phân tích", doc_type="Chỉ đạo", issued_by="Chưa xác định", file_path=key, start_date=datetime.utcnow().date(), end_date=datetime.utcnow().date(), status="draft", upload_status="processing", processing_stage="queued", source_hash=hashlib.sha256(content).hexdigest(), original_filename=file.filename, original_mime_type=file.content_type, uploaded_by=str(user.get("sub")), uploaded_by_name=service.actor_name(user), draft_expires_at=datetime.utcnow() + timedelta(hours=settings.DOCUMENT_DRAFT_TTL_HOURS))
     db.add(document); db.flush(); service.audit(db, document.id, user, "uploaded"); db.commit(); db.refresh(document)
     background_tasks.add_task(service.process_document, document.id, SessionLocal)
     return {"data": document}
@@ -99,7 +99,7 @@ def preview(document_id: int, db: Session = Depends(get_db), user: dict = Depend
     if not service.can_manage_draft(document, user):
         raise HTTPException(status_code=403, detail="Chỉ người upload mới xem được bản nháp")
     if document.upload_status == "processing":
-        return JSONResponse(status_code=202, content={"data": {"status": "processing", "document_id": document.id}})
+        return JSONResponse(status_code=202, content={"data": {"status": "processing", "stage": document.processing_stage or "queued", "document_id": document.id}})
     analysis = service.read_draft(document)
     if document.upload_status == "failed":
         raise HTTPException(status_code=422, detail=analysis.get("error", "Không thể trích xuất văn bản"))
@@ -121,7 +121,7 @@ def approve(document_id: int, draft: schemas.DocumentDraft, db: Session = Depend
     if not service.can_manage_draft(document, user):
         raise HTTPException(status_code=403, detail="Không có quyền xác nhận bản nháp này")
     payload = draft.model_dump(mode="python"); service.validate_approval(payload); service.apply_draft(document, payload)
-    service.delete_object(document.draft_analysis_path); document.draft_analysis_path = None; document.draft_expires_at = None; document.upload_status = "approved"; document.status = "active"; document.code = payload["document_number"]
+    service.delete_object(document.draft_analysis_path); document.draft_analysis_path = None; document.draft_expires_at = None; document.upload_status = "approved"; document.processing_stage = None; document.status = "active"; document.code = payload["document_number"]
     service.audit(db, document.id, user, "approved"); db.commit(); db.refresh(document)
     return {"data": document}
 

@@ -592,3 +592,39 @@ flowchart LR
   H --> I[Đang xác nhận]
   I --> J[Văn bản đã duyệt]
 ```
+## Giai đoạn 44 — Hiển thị tiến độ xử lý văn bản
+
+- Bổ sung trường `processing_stage` cho văn bản và migration `0006_document_processing_stage`.
+- Background task cập nhật tiến độ theo từng bước: `queued` → `extracting_text` → `ocr` (khi cần) → `ai_analysis` → `ready` hoặc `failed`.
+- API preview trả stage hiện tại trong HTTP 202; bản xem trước của cán bộ hiển thị thông điệp nghiệp vụ tương ứng thay vì một trạng thái chờ chung chung.
+- Giữ nguyên nguyên tắc: tác vụ OCR/AI chạy nền, chỉ hiện form khi dữ liệu đã sẵn sàng; trạng thái xử lý không làm lộ nội dung tệp.
+- Kiểm tra: Alembic đã lên `0006_document_processing_stage (head)`, frontend build thành công và 6 backend regression tests đạt.
+
+```mermaid
+flowchart LR
+  A[Tải văn bản] --> B[queued]
+  B --> C[extracting_text]
+  C --> D{Có chữ trích xuất trực tiếp?}
+  D -->|Không| E[ocr]
+  D -->|Có| F[ai_analysis]
+  E --> F
+  F --> G{Thành công?}
+  G -->|Có| H[ready / pending_review]
+  G -->|Không| I[failed]
+  H --> J[Hiển thị bản nháp để cán bộ kiểm tra]
+```
+## Giai đoạn 45 — Hoàn thiện danh sách địa bàn trong bản xem trước (31/07/2026)
+
+- Bổ sung danh mục chuẩn gồm **45 xã/phường Điện Biên** vào backend, dựa trên bộ ranh giới hành chính năm 2025 đang dùng cho bản đồ của hệ thống.
+- Thêm migration Alembic `0007_seed_dien_bien_communes_2025`: chỉ thêm các địa bàn chưa có, giữ nguyên ID, dữ liệu và liên kết tài khoản của 3 địa bàn mẫu hiện hữu.
+- Thêm kiểm thử hồi quy để ngăn danh mục địa bàn bị rút xuống dưới 45 đơn vị trong các thay đổi sau này.
+- Đồng bộ sequence ID PostgreSQL trước khi thêm dữ liệu tham chiếu, để các bản ghi mẫu tạo thủ công trên Supabase không thể gây trùng khóa chính.
+- Dùng mã revision Alembic ngắn, tương thích giới hạn `VARCHAR(32)` của bảng phiên bản migration hiện hữu.
+
+```mermaid
+flowchart LR
+    A["Bộ ranh giới hành chính 2025: 45 xã/phường"] --> B["Danh mục địa bàn chuẩn backend"]
+    B --> C["Migration Alembic chỉ thêm địa bàn thiếu"]
+    C --> D["GET /api/communes trả đủ 45 đơn vị"]
+    D --> E["Bản xem trước hiển thị đủ ô chọn địa bàn"]
+```

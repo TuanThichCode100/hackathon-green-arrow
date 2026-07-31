@@ -6,6 +6,7 @@ import { API_BASE_URL } from '@/lib/api';
 
 const emptyDraft = { document_number: '', title: '', doc_type: '', issued_by: '', issued_date: '', start_date: '', end_date: '', llm_summary: '', required_actions: '', urgency: '', scope_type: 'province', commune_ids: [] as number[], show_original_to_province: false };
 type ReviewStatus = 'processing' | 'ready' | 'failed';
+const processingLabels: Record<string, string> = { queued: 'Đang xếp hàng xử lý tệp', extracting_text: 'Đang trích xuất nội dung chữ', ocr: 'Đang đọc bản quét của văn bản', ai_analysis: 'Đang phân tích thông tin văn bản', ready: 'Đã sẵn sàng để kiểm tra' };
 
 export default function DocumentReviewModal({ documentId, onClose, onDone, communes }: { documentId: number; onClose: () => void; onDone: () => void; communes: Array<{ id: number; name: string }> }) {
   const [draft, setDraft] = useState<any>(emptyDraft);
@@ -16,6 +17,7 @@ export default function DocumentReviewModal({ documentId, onClose, onDone, commu
   const [saveAction, setSaveAction] = useState<'draft' | 'approve' | null>(null);
   const [success, setSuccess] = useState('');
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>('processing');
+  const [processingStage, setProcessingStage] = useState('queued');
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
   const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 
@@ -26,7 +28,7 @@ export default function DocumentReviewModal({ documentId, onClose, onDone, commu
       try {
         const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/preview`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
         const body = await response.json();
-        if (response.status === 202) { if (!cancelled) { setReviewStatus('processing'); timer = setTimeout(loadPreview, 2000); } return; }
+        if (response.status === 202) { if (!cancelled) { setReviewStatus('processing'); setProcessingStage(body.data?.stage || 'queued'); timer = setTimeout(loadPreview, 2000); } return; }
         if (!response.ok) throw new Error(body.detail || 'Không thể tạo bản xem trước.');
         if (!cancelled) { setDraft({ ...emptyDraft, ...body.data.draft }); setEvidence(body.data.evidence || {}); setAiMessage(body.data.ai_analysis?.message || ''); setReviewStatus('ready'); }
       } catch (reason) { if (!cancelled) { setReviewStatus('failed'); setError(reason instanceof Error ? reason.message : 'Không thể tạo bản xem trước.'); } }
@@ -61,7 +63,7 @@ export default function DocumentReviewModal({ documentId, onClose, onDone, commu
   const source = (key: string) => evidence[key] ? <small className="document-evidence">Nguồn: trang {evidence[key].page}, “{evidence[key].quote}”</small> : null;
 
   return <div className="review-backdrop" role="presentation"><section className="document-review document-review-wide" role="dialog" aria-modal="true" aria-labelledby="review-title"><header className="document-review-header"><div><p className="eyebrow">Bản nháp cần xác nhận</p><h2 id="review-title">Kiểm tra thông tin văn bản</h2></div><button className="icon-button" onClick={cancel} aria-label="Thoát và không lưu"><X size={18} /></button></header><div className="document-review-body">
-    {reviewStatus === 'processing' && <div className="empty-state" role="status"><Spinner size={28} className="spin" /><p>Hệ thống đang trích xuất thông tin từ văn bản…</p><small>Trang này sẽ tự động hiển thị bản xem trước khi hoàn tất.</small></div>}
+    {reviewStatus === 'processing' && <div className="empty-state" role="status"><Spinner size={28} className="spin" /><p>{processingLabels[processingStage] || 'Đang xử lý văn bản'}</p><small>Trang này sẽ tự động hiển thị bản xem trước khi hoàn tất.</small></div>}
     {error && <p className="form-error" role="alert">{error}</p>}{success && <p className="form-success" role="status">{success}</p>}
     {reviewStatus === 'ready' && <div className="review-split"><section className="review-source-pane">{previewPdfUrl ? <iframe title="Bản hiển thị tệp đã tải lên" className="document-pdf-frame" src={previewPdfUrl} /> : <div className="original-request-card"><FileText size={28} /><strong>Đang chuẩn bị bản hiển thị của tệp</strong></div>}</section><section className="review-form-pane">{aiMessage && <p className="form-error" role="status">{aiMessage}</p>}<div className="review-grid">
       <label>Số/ký hiệu<input value={draft.document_number || ''} onChange={(event) => set('document_number', event.target.value)} />{source('document_number')}</label><label>Loại văn bản<input value={draft.doc_type || ''} onChange={(event) => set('doc_type', event.target.value)} />{source('doc_type')}</label><label className="review-wide">Tiêu đề<input value={draft.title || ''} onChange={(event) => set('title', event.target.value)} />{source('title')}</label><label>Cơ quan ban hành<input value={draft.issued_by || ''} onChange={(event) => set('issued_by', event.target.value)} />{source('issued_by')}</label><label>Ngày ban hành<input type="date" value={draft.issued_date || ''} onChange={(event) => set('issued_date', event.target.value)} />{source('issued_date')}</label><label>Hiệu lực từ *<input id="effective-start-date" required aria-invalid={!draft.start_date} type="date" value={draft.start_date || ''} onChange={(event) => { set('start_date', event.target.value); if (event.target.value) setError(''); }} />{!draft.start_date && <small className="field-hint">Cần nhập trước khi xác nhận văn bản.</small>}</label><label>Hết hiệu lực<input type="date" value={draft.end_date || ''} onChange={(event) => set('end_date', event.target.value)} /></label><label>Mức độ khẩn<input value={draft.urgency || ''} placeholder="Ví dụ: Khẩn" onChange={(event) => set('urgency', event.target.value)} /></label><label className="review-wide">Tóm tắt chỉ đạo<textarea value={draft.llm_summary || ''} placeholder="Nội dung tóm tắt để cán bộ kiểm tra và bổ sung." onChange={(event) => set('llm_summary', event.target.value)} /></label><label className="review-wide">Hành động yêu cầu<textarea value={draft.required_actions || ''} placeholder="Các việc cần thực hiện; cán bộ có thể bổ sung trực tiếp." onChange={(event) => set('required_actions', event.target.value)} /></label>

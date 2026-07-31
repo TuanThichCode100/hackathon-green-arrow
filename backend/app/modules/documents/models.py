@@ -18,6 +18,7 @@ class Document(Base):
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String, default="active")
     upload_status: Mapped[str] = mapped_column(String, default="approved", index=True)
+    processing_stage: Mapped[str] = mapped_column(String, nullable=True)
     document_number: Mapped[str] = mapped_column(String, nullable=True)
     issued_date: Mapped[date] = mapped_column(Date, nullable=True)
     scope_type: Mapped[str] = mapped_column(String, default="province")

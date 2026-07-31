@@ -381,11 +381,14 @@ def process_document(document_id: int, session_factory):
             return
         content = read_encrypted(document.file_path)
         try:
+            document.processing_stage = "extracting_text"; db.commit()
             text = extract_direct_text(content, document.original_filename or "")
             if not text.strip():
+                document.processing_stage = "ocr"; db.commit()
                 text, confidence = run_ocr(content, document.original_filename or "")
             else:
                 confidence = 0.95
+            document.processing_stage = "ai_analysis"; db.commit()
             analysis = heuristic_draft(text, document.original_filename or "")
             analysis["extraction_confidence"] = confidence
             analysis = run_ai_analysis(text, analysis)
@@ -393,8 +396,10 @@ def process_document(document_id: int, session_factory):
             audit_system(db, document, "ai_analysis_completed" if ai_status == "completed" else "ai_analysis_unavailable", {"status": ai_status, "model": settings.LLM_MODEL or None})
             write_draft(document, analysis)
             document.upload_status = "pending_review"
+            document.processing_stage = "ready"
         except Exception as exc:
             document.upload_status = "failed"
+            document.processing_stage = "failed"
             write_draft(document, {"draft": {}, "evidence": {}, "error": str(exc), "extraction_confidence": 0})
         db.commit()
     finally:

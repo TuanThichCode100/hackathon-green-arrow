@@ -24,6 +24,7 @@ class DocumentResponse(DocumentDraft):
     code: str
     status: str
     upload_status: str
+    processing_stage: Optional[str] = None
     source_hash: Optional[str] = None
     original_filename: Optional[str] = None
     original_mime_type: Optional[str] = None
