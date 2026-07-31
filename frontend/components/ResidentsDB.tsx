@@ -80,8 +80,8 @@ export default function ResidentsDB({ isProv, assignedCommuneId, showToast, comm
     if (!editingId && !targetCommuneId) { setFormError('Chọn xã/phường cho người dân này trước khi lưu.'); return; }
     try {
       const clean = { ...formData, name: formData.name.trim(), phone: formData.phone.replace(/\s/g, '') };
-      if (editingId) await apiUpdateResident(editingId, clean); else await apiCreateResident({ ...clean, commune_id: targetCommuneId });
-      showToast(editingId ? 'Đã cập nhật thông tin dân cư.' : 'Đã thêm dân cư.');
+      if (editingId) await apiUpdateResident(editingId, isProv ? { ...clean, commune_id: targetCommuneId } : clean); else await apiCreateResident({ ...clean, commune_id: targetCommuneId });
+      showToast(editingId && selectedCommuneId && targetCommuneId !== selectedCommuneId ? 'Đã cập nhật. Bản ghi đã chuyển sang địa bàn khác nên không còn ở bộ lọc hiện tại.' : editingId ? 'Đã cập nhật thông tin dân cư.' : 'Đã thêm dân cư.');
       setIsModalOpen(false);
       mutate();
     } catch (error) { setFormError(error instanceof Error ? error.message : 'Không thể lưu dữ liệu.'); }

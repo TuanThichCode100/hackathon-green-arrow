@@ -14,6 +14,7 @@ class ResidentCreate(BaseModel):
 
 
 class ResidentUpdate(BaseModel):
+    commune_id: Optional[int] = None
     name: Optional[str] = None
     phone: Optional[str] = None
     ethnic: Optional[str] = None

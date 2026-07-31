@@ -679,3 +679,22 @@ flowchart LR
     C --> D["ResidentsDB dùng trực tiếp danh sách"]
     D --> E["Bảng hiển thị dân cư và xã/phường"]
 ```
+
+## Giai đoạn 49 — Cập nhật thông tin dân cư có hiệu lực (31/07/2026)
+
+- Sửa luồng cập nhật để cán bộ tỉnh gửi và lưu được xã/phường mới khi điều chuyển một bản ghi dân cư.
+- Cán bộ xã vẫn bị bỏ qua mọi yêu cầu đổi địa bàn ở backend, giữ nguyên giới hạn quyền theo xã/phường.
+- API trả thông báo 422 khi thao tác lưu không có trường nào thực sự thay đổi, thay cho phản hồi thành công sai.
+- Khi điều chuyển bản ghi khỏi địa bàn đang lọc, UI thông báo rõ rằng bản ghi sẽ không còn nằm trong danh sách hiện tại.
+- Kiểm tra: frontend production build thành công; 12 regression tests backend đạt, gồm điều chuyển địa bàn của cán bộ tỉnh.
+
+```mermaid
+flowchart LR
+    A["Cán bộ sửa bản ghi"] --> B{"Có thay đổi thực tế?"}
+    B -->|"Không"| C["Thông báo chưa có thay đổi"]
+    B -->|"Có"| D{"Cán bộ tỉnh đổi địa bàn?"}
+    D -->|"Có"| E["Kiểm tra xã/phường rồi lưu"]
+    D -->|"Không"| F["Lưu trường thông tin được phép"]
+    E --> G["Làm mới danh sách"]
+    F --> G
+```

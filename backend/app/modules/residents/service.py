@@ -39,10 +39,24 @@ def get_resident(db: Session, resident_id: int, commune_id: int | None = None):
     return query.first()
 
 
-def update_resident(db: Session, resident_id: int, data, commune_id: int | None = None):
+def update_resident(
+    db: Session,
+    resident_id: int,
+    data,
+    commune_id: int | None = None,
+    allow_commune_change: bool = False,
+):
     resident = get_resident(db, resident_id, commune_id)
     if resident:
-        for key, value in data.model_dump(exclude_unset=True).items():
+        update_data = data.model_dump(exclude_unset=True)
+        if not allow_commune_change:
+            update_data.pop("commune_id", None)
+        if "commune_id" in update_data and not db.query(Commune.id).filter(Commune.id == update_data["commune_id"]).first():
+            raise HTTPException(status_code=422, detail="Xã/phường được chọn không còn trong danh mục hiện hành")
+        changed = {key: value for key, value in update_data.items() if getattr(resident, key) != value}
+        if not changed:
+            raise HTTPException(status_code=422, detail="Chưa có thông tin nào thay đổi để lưu")
+        for key, value in changed.items():
             setattr(resident, key, value)
         try:
             db.commit()

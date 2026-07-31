@@ -63,7 +63,13 @@ def update(
     user: dict = Depends(require_role(["tinh", "xa"])),
 ):
     commune_id = user.get("commune_id") if user.get("role") == "xa" else None
-    resident = service.update_resident(db, id, data, commune_id)
+    resident = service.update_resident(
+        db,
+        id,
+        data,
+        commune_id,
+        allow_commune_change=user.get("role") == "tinh",
+    )
     if not resident:
         raise HTTPException(status_code=404, detail="Không tìm thấy dân cư trong địa bàn được phép quản lý")
     return {"data": resident}

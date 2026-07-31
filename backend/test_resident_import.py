@@ -88,3 +88,23 @@ class ResidentImportTest(TestCase):
         self.assertIsNone(updated)
         self.assertFalse(deleted)
         self.assertEqual(service.get_resident(self.db, resident.id).name, "Người dân xã khác")
+
+    def test_province_update_can_change_a_residents_commune(self):
+        resident = Resident(
+            commune_id=1,
+            name="Người dân cần điều chuyển",
+            phone="0934567890",
+            ethnic="Kinh",
+            literate=True,
+        )
+        self.db.add(resident)
+        self.db.commit()
+
+        updated = service.update_resident(
+            self.db,
+            resident.id,
+            ResidentUpdate(commune_id=2),
+            allow_commune_change=True,
+        )
+
+        self.assertEqual(updated.commune_id, 2)
