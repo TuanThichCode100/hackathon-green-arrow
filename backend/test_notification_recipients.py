@@ -24,7 +24,7 @@ class NotificationRecipientTest(TestCase):
             Commune(id=1, name="A", lat=21.0, lng=103.0, population=999),
             Commune(id=2, name="B", lat=22.0, lng=102.0, population=999),
             Resident(commune_id=1, name="One", phone="0900000011", ethnic="Kinh", literate=True),
-            Resident(commune_id=1, name="Two", phone="0900000012", ethnic="Thai", literate=True),
+            Resident(commune_id=1, name="Two", phone="0900000012", ethnic="Thai", preferred_alert_language="hmn", literate=True),
         ])
         self.db.commit()
 
@@ -81,15 +81,15 @@ class NotificationRecipientTest(TestCase):
         )
 
         notifications = self.db.query(Notification).order_by(Notification.channel).all()
-        self.assertEqual(len(notifications), 3)
-        self.assertEqual({notification.recipient_count for notification in notifications}, {2})
+        self.assertEqual(len(notifications), 6)
+        self.assertEqual({notification.recipient_count for notification in notifications}, {1})
         self.assertEqual(
             self.db.query(NotificationRecipient).count(),
             6,
         )
-        total, items = service.list_notifications(self.db)
-        self.assertEqual(total, 3)
-        self.assertTrue(all(item["tracking_available"] for item in items))
-        self.assertTrue(all(item["commune_name"] == "A" for item in items))
-        self.assertTrue(all(item["ethnic_language"] == "Kinh" for item in items))
-        self.assertTrue(all(item["pending_count"] == 2 for item in items))
+        total, items = service.list_dispatches(self.db)
+        self.assertEqual(total, 1)
+        self.assertEqual(items[0]["total_residents"], 2)
+        self.assertEqual(items[0]["not_notified_residents"], 2)
+        self.assertEqual(items[0]["languages"], ["Tiếng Mông", "Tiếng Việt"])
+        self.assertIn("waiting_content", items[0]["channels"]["sms"])

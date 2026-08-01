@@ -757,3 +757,26 @@ flowchart LR
     F --> G["Bảng Phân phối và KPI kênh"]
     B --> G
 ```
+
+## Giai đoạn 53 — Đợt phân phối theo địa bàn và ngôn ngữ ưu tiên (01/08/2026)
+
+- Xóa 9 bản ghi mô phỏng cũ không có người nhận; sau migration, bảng `notifications` chỉ lưu đợt phân phối vận hành thực tế.
+- Bổ sung `preferred_alert_language` cho sổ dân cư, mặc định `vi`. Khi kích hoạt cảnh báo, hệ thống tách người nhận theo địa bàn, kênh và ngôn ngữ ưu tiên.
+- Nhóm chưa có nội dung ngôn ngữ được giữ ở `waiting_content`, không tự gửi tiếng Việt và không được tính là đã thông báo.
+- Danh sách Phân phối gộp theo đợt cảnh báo và địa bàn. Tiến độ hiển thị số đã thông báo và chưa thông báo; trạng thái kênh được tổng hợp trong cùng dòng, không còn cột trạng thái dư thừa.
+- Bấm một dòng mở modal 60% màn hình, hiển thị tổng dân cư, số đã/chưa thông báo, danh sách từ `residents` ưu tiên người chưa thông báo, trạng thái theo kênh và nút Gọi thủ công sẵn sàng tích hợp tổng đài.
+- Thời điểm khởi tạo, gửi và cập nhật được tách riêng trong dữ liệu backend.
+- Kiểm tra: Alembic `0009_dispatch_language_tracking` áp dụng thành công; xác minh còn 3 dân cư và 0 bản ghi thông báo mô phỏng; frontend production build và 16 regression tests đạt.
+
+```mermaid
+flowchart LR
+    A["Cảnh báo và địa bàn"] --> B["Nhóm residents theo ngôn ngữ ưu tiên"]
+    B --> C{"Có nội dung ngôn ngữ?"}
+    C -->|"Có"| D["Đợt kênh chờ gửi"]
+    C -->|"Chưa có"| E["waiting_content"]
+    D --> F["Gửi và ghi nhận theo từng người"]
+    E --> G["Cán bộ bổ sung nội dung ngôn ngữ"]
+    G --> D
+    F --> H["Bảng đợt cảnh báo × địa bàn"]
+    H --> I["Modal chi tiết người nhận"]
+```

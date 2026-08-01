@@ -1,5 +1,8 @@
-from pydantic import BaseModel, ConfigDict
 from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
+
 
 class NotificationResponse(BaseModel):
     id: int
@@ -9,13 +12,25 @@ class NotificationResponse(BaseModel):
     recipient_count: int
     status: str
     sent_at: datetime
-    commune_name: str | None = None
-    tracking_available: bool = False
-    pending_count: int = 0
-    sent_count: int = 0
-    received_count: int = 0
-    failed_count: int = 0
     model_config = ConfigDict(from_attributes=True)
+
+
+class DispatchResponse(BaseModel):
+    decision_id: int
+    commune_id: int
+    commune_name: str
+    total_residents: int
+    notified_residents: int
+    not_notified_residents: int
+    channels: dict[str, list[str]]
+    languages: list[str]
+    created_at: datetime
+    dispatched_at: datetime | None = None
+    updated_at: datetime
+
+
+class DispatchDetailResponse(DispatchResponse):
+    people: list[dict[str, Any]]
 
 
 class RecipientReceiptRequest(BaseModel):

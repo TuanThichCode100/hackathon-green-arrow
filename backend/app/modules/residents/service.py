@@ -116,7 +116,7 @@ def import_residents(db: Session, records: list[dict]):
             errors.append({"row": source_row, "reason": "Số điện thoại bị trùng trong tệp CSV."})
         else:
             accepted_phones.add(phone)
-            accepted.append({"commune_id": commune_id, "name": name, "phone": phone, "ethnic": ethnic, "literate": bool(row.get("literate", True))})
+            accepted.append({"commune_id": commune_id, "name": name, "phone": phone, "ethnic": ethnic, "preferred_alert_language": (row.get("preferred_alert_language") or "vi").strip(), "literate": bool(row.get("literate", True))})
 
     try:
         if accepted:

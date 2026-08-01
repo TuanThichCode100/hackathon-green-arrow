@@ -124,13 +124,12 @@ def manual_trigger(db: Session, request):
 
     for commune_id in request.commune_ids:
         for channel in ["zalo", "sms", "loa"]:
-            notification_service.create_notification_with_recipients(
+            notification_service.create_language_dispatches(
                 db,
                 commune_id=commune_id,
                 decision_id=decision.id,
                 channel=channel,
-                ethnic_language="Kinh",
-                content=f"[{request.disaster_type}] {message}",
+                vietnamese_content=f"[{request.disaster_type}] {message}",
             )
 
     db.commit()

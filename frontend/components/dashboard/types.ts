@@ -72,19 +72,17 @@ export interface Policy {
 }
 
 export interface Log {
+  decisionId: number;
+  communeId: number;
   time: string;
+  updatedAt: string;
   commune: string;
   channel: string;
   channelIcon: string;
   ethnic: string;
   recipientsStr: string;
-  pendingStr: string;
-  sentStr: string;
-  receivedStr: string;
-  failedStr: string;
-  trackingAvailable: boolean;
-  statusLabel: string;
-  pillStyle: string;
+  progressStr: string;
+  channelSummary: string;
 }
 
 export interface DashboardData {

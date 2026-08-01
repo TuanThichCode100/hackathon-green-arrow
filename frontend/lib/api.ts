@@ -134,19 +134,17 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
   let logs = [];
   if (notificationsData?.items?.length > 0) {
     logs = notificationsData.items.map(n => ({
-      time: new Date(n.sent_at).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit', second:'2-digit'}),
-      commune: n.commune_name || `Xã ID: ${n.commune_id}`,
-      channel: n.channel,
-      channelIcon: n.channel === 'zalo' ? '💬' : n.channel === 'sms' ? '✉️' : '📞',
-      ethnic: n.ethnic_language,
-      recipientsStr: fmt(n.recipient_count),
-      pendingStr: fmt(n.pending_count || 0),
-      sentStr: fmt(n.sent_count || 0),
-      receivedStr: fmt(n.received_count || 0),
-      failedStr: fmt(n.failed_count || 0),
-      trackingAvailable: Boolean(n.tracking_available),
-      statusLabel: !n.tracking_available ? 'Dữ liệu cũ chưa xác thực' : n.status === 'sent' ? 'Đã gửi, đang chờ xác nhận' : n.status === 'failed' ? 'Thất bại' : 'Đang chờ phân phối',
-      pillStyle: !n.tracking_available ? pill('#64748B', '#EEF2F6') : n.status === 'sent' ? pill('#1E9E6A', '#E7F6EF') : n.status === 'failed' ? pill('#E23D3D', '#FDECEC') : pill('#E8A93B', '#FFF4DC')
+      decisionId: n.decision_id,
+      communeId: n.commune_id,
+      time: new Date(n.created_at).toLocaleString('vi-VN', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}),
+      updatedAt: new Date(n.updated_at).toLocaleString('vi-VN', {hour:'2-digit', minute:'2-digit'}),
+      commune: n.commune_name,
+      channel: Object.keys(n.channels).join(' · '),
+      channelIcon: '',
+      ethnic: (n.languages || []).join(' · '),
+      recipientsStr: fmt(n.total_residents),
+      progressStr: `${fmt(n.notified_residents)} đã thông báo · ${fmt(n.not_notified_residents)} chưa thông báo`,
+      channelSummary: Object.entries(n.channels || {}).map(([channel, statuses]) => `${channel}: ${(statuses as string[]).includes('waiting_content') ? 'chờ nội dung' : (statuses as string[]).includes('sent') ? 'đã gửi' : 'chờ gửi'}`).join(' · ')
     }));
   }
 

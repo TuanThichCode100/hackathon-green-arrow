@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { apiCreateResident, apiDeleteResident, apiImportResidents, apiUpdateResident, useResidents } from '../lib/api';
 
 const ETHNICS = ['Kinh', 'Thái', 'Mông', 'Khơ Mú', 'Dao'];
+const ALERT_LANGUAGES = [{ value: 'vi', label: 'Tiếng Việt' }, { value: 'hmn', label: 'Tiếng Mông' }, { value: 'tai', label: 'Tiếng Thái' }, { value: 'khmu', label: 'Tiếng Khơ Mú' }, { value: 'dao', label: 'Tiếng Dao' }];
 const fieldStyle = { width: '100%', height: 40, border: '1px solid var(--line)', borderRadius: 10, padding: '0 12px', color: 'var(--ink)', background: 'var(--surface)' };
 const buttonStyle = { minHeight: 40, padding: '8px 14px', borderRadius: 10, cursor: 'pointer', fontWeight: 650 };
 
-type Resident = { id: number; commune_id: number; name: string; phone: string; ethnic: string; literate: boolean };
+type Resident = { id: number; commune_id: number; name: string; phone: string; ethnic: string; preferred_alert_language: string; literate: boolean };
 type ImportReport = { imported: number; skipped: number; errors: { row: number; reason: string }[] };
 type Commune = { id: number | string; name: string };
 
@@ -44,7 +45,7 @@ export default function ResidentsDB({ isProv, assignedCommuneId, showToast, comm
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formCommuneId, setFormCommuneId] = useState('');
-  const [formData, setFormData] = useState({ name: '', phone: '', ethnic: 'Kinh', literate: true });
+  const [formData, setFormData] = useState({ name: '', phone: '', ethnic: 'Kinh', preferred_alert_language: 'vi', literate: true });
   const [formError, setFormError] = useState('');
   const [importing, setImporting] = useState(false);
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
@@ -68,7 +69,7 @@ export default function ResidentsDB({ isProv, assignedCommuneId, showToast, comm
   const openModal = (resident: Resident | null = null) => {
     setEditingId(resident?.id ?? null);
     setFormCommuneId(String(resident?.commune_id ?? communeId));
-    setFormData(resident ? { name: resident.name, phone: resident.phone, ethnic: resident.ethnic, literate: resident.literate } : { name: '', phone: '', ethnic: 'Kinh', literate: true });
+    setFormData(resident ? { name: resident.name, phone: resident.phone, ethnic: resident.ethnic, preferred_alert_language: resident.preferred_alert_language || 'vi', literate: resident.literate } : { name: '', phone: '', ethnic: 'Kinh', preferred_alert_language: 'vi', literate: true });
     setFormError('');
     setIsModalOpen(true);
   };
@@ -101,6 +102,7 @@ export default function ResidentsDB({ isProv, assignedCommuneId, showToast, comm
     const ethnicIndex = indexOf('dantoc', 'ethnic');
     const communeIndex = indexOf('xaphuong', 'commune', 'diaban');
     const literateIndex = indexOf('bietchu', 'literate');
+    const languageIndex = indexOf('ngonngunhancanhbao', 'ngonngu', 'alertlanguage', 'preferredalertlanguage');
     if (nameIndex < 0 || phoneIndex < 0 || ethnicIndex < 0) {
       showToast('CSV phải có cột Họ tên, Số điện thoại và Dân tộc.', 'error');
       return;
@@ -116,6 +118,7 @@ export default function ResidentsDB({ isProv, assignedCommuneId, showToast, comm
       name: row[nameIndex] ?? '',
       phone: row[phoneIndex] ?? '',
       ethnic: row[ethnicIndex] ?? '',
+      preferred_alert_language: languageIndex < 0 ? 'vi' : row[languageIndex] ?? 'vi',
       literate: literateIndex < 0 ? true : ['1', 'true', 'co', 'yes'].includes(normaliseHeader(row[literateIndex] ?? '')),
     }));
     setImporting(true);
