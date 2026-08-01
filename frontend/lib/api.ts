@@ -122,7 +122,7 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
   // (We can connect them fully once backend has data)
   const chBase = channelsData && channelsData.length > 0 ? channelsData : [];
   const channels = chBase.map((ch) => {
-    return { name: ch.name, icon: ch.name === 'zalo' ? '💬' : ch.name === 'sms' ? '✉️' : '📞', color: ch.name === 'zalo' ? '#1E9E6A' : ch.name === 'sms' ? '#25ADE3' : '#E8A93B', sentStr: fmt(ch.sent), deliveredStr: fmt(ch.delivered), failedStr: fmt(ch.failed), rateStr: Math.round(ch.rate * 100) + '%', pct: Math.round(ch.rate * 100) + '%' };
+    return { name: ch.name, icon: ch.name === 'zalo' ? '💬' : ch.name === 'sms' ? '✉️' : '📢', color: ch.name === 'zalo' ? '#1E9E6A' : ch.name === 'sms' ? '#25ADE3' : '#E8A93B', pendingStr: fmt(ch.pending || 0), sentStr: fmt(ch.sent), deliveredStr: fmt(ch.delivered), receivedStr: fmt(ch.delivered), failedStr: fmt(ch.failed), rateStr: Math.round(ch.rate * 100) + '%', pct: Math.round(ch.rate * 100) + '%' };
   });
 
   const eth = ethnicsData && ethnicsData.length > 0 ? ethnicsData : [];
@@ -135,13 +135,18 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
   if (notificationsData?.items?.length > 0) {
     logs = notificationsData.items.map(n => ({
       time: new Date(n.sent_at).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit', second:'2-digit'}),
-      commune: `Xã ID: ${n.commune_id}`,
+      commune: n.commune_name || `Xã ID: ${n.commune_id}`,
       channel: n.channel,
       channelIcon: n.channel === 'zalo' ? '💬' : n.channel === 'sms' ? '✉️' : '📞',
       ethnic: n.ethnic_language,
       recipientsStr: fmt(n.recipient_count),
-      statusLabel: n.status === 'delivered' ? 'Đã gửi' : n.status === 'failed' ? 'Thất bại' : 'Đang xử lý',
-      pillStyle: n.status === 'delivered' ? pill('#1E9E6A', '#E7F6EF') : n.status === 'failed' ? pill('#E23D3D', '#FDECEC') : pill('#25ADE3', '#EAF7FD')
+      pendingStr: fmt(n.pending_count || 0),
+      sentStr: fmt(n.sent_count || 0),
+      receivedStr: fmt(n.received_count || 0),
+      failedStr: fmt(n.failed_count || 0),
+      trackingAvailable: Boolean(n.tracking_available),
+      statusLabel: !n.tracking_available ? 'Dữ liệu cũ chưa xác thực' : n.status === 'sent' ? 'Đã gửi, đang chờ xác nhận' : n.status === 'failed' ? 'Thất bại' : 'Đang chờ phân phối',
+      pillStyle: !n.tracking_available ? pill('#64748B', '#EEF2F6') : n.status === 'sent' ? pill('#1E9E6A', '#E7F6EF') : n.status === 'failed' ? pill('#E23D3D', '#FDECEC') : pill('#E8A93B', '#FFF4DC')
     }));
   }
 

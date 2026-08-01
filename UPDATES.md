@@ -739,3 +739,21 @@ flowchart LR
     H --> I["Bản đồ, tổng quan và thống kê kênh"]
     D -->|"Không"| J["Không tạo đợt gửi rỗng"]
 ```
+
+## Giai đoạn 52 — Hiển thị tiến độ phân phối xác thực trên UI (01/08/2026)
+
+- Màn hình **Phân phối cảnh báo** hiển thị mục tiêu, chờ gửi, đã gửi, đã nhận và thất bại cho từng đợt gửi; các KPI kênh cũng dùng đúng các trạng thái này.
+- API trả về tên xã/phường cùng tiến độ người nhận, thay cho dạng `Xã ID: ...` khó kiểm tra.
+- Dữ liệu mô phỏng cũ không có danh sách `NotificationRecipient` vẫn được giữ để truy vết, nhưng được gắn nhãn **Dữ liệu cũ chưa xác thực**, hiển thị dấu `—` cho các trạng thái theo người nhận và bị loại khỏi KPI xác thực.
+- Chuẩn hóa nhãn kênh `loa` thay cho `call`, đồng nhất với đợt phân phối được tạo từ cảnh báo.
+- Kiểm tra: thêm regression assertion cho API tiến độ phân phối; frontend production build và backend regression tests được chạy sau thay đổi.
+
+```mermaid
+flowchart LR
+    A["Đợt gửi cũ không có người nhận"] --> B["Gắn nhãn dữ liệu cũ chưa xác thực"]
+    C["Đợt gửi mới"] --> D["NotificationRecipient theo từng dân cư"]
+    D --> E["pending / sent / received / failed"]
+    E --> F["API tiến độ theo địa bàn và kênh"]
+    F --> G["Bảng Phân phối và KPI kênh"]
+    B --> G
+```

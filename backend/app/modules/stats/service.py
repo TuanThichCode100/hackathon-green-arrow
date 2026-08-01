@@ -61,33 +61,30 @@ def calc_overview(db: Session, time_range: str):
 
 def calc_channel_stats(db: Session, time_range: str):
     start_date = get_start_date(time_range)
-    channels = ["zalo", "sms", "call"]
+    channels = ["zalo", "sms", "loa"]
     stats = []
     
     for ch in channels:
-        sent = db.query(func.sum(Notification.recipient_count)).filter(
-            Notification.channel == ch,
-            Notification.status.in_(["sent", "delivered"]),
-            Notification.sent_at >= start_date,
-        ).scalar() or 0
-        delivered = db.query(func.count(NotificationRecipient.id)).join(
+        recipient_rows = db.query(
+            NotificationRecipient.status,
+            func.count(NotificationRecipient.id),
+        ).join(
             Notification,
             Notification.id == NotificationRecipient.notification_id,
         ).filter(
             Notification.channel == ch,
-            NotificationRecipient.status.in_(["received", "delivered"]),
-            NotificationRecipient.received_at >= start_date,
-        ).scalar() or 0
-        failed = db.query(func.sum(Notification.recipient_count)).filter(
-            Notification.channel == ch, 
-            Notification.status == 'failed',
             Notification.sent_at >= start_date
-        ).scalar() or 0
-        
+        ).group_by(NotificationRecipient.status).all()
+        counts = {status: int(count) for status, count in recipient_rows}
+        pending = counts.get("pending", 0)
+        sent = counts.get("sent", 0) + counts.get("received", 0) + counts.get("delivered", 0)
+        delivered = counts.get("received", 0) + counts.get("delivered", 0)
+        failed = counts.get("failed", 0)
         rate = delivered / sent if sent > 0 else 0
         
         stats.append({
             "name": ch,
+            "pending": pending,
             "sent": int(sent),
             "delivered": int(delivered),
             "failed": int(failed),

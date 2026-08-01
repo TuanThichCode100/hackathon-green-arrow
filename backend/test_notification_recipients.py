@@ -87,3 +87,9 @@ class NotificationRecipientTest(TestCase):
             self.db.query(NotificationRecipient).count(),
             6,
         )
+        total, items = service.list_notifications(self.db)
+        self.assertEqual(total, 3)
+        self.assertTrue(all(item["tracking_available"] for item in items))
+        self.assertTrue(all(item["commune_name"] == "A" for item in items))
+        self.assertTrue(all(item["ethnic_language"] == "Kinh" for item in items))
+        self.assertTrue(all(item["pending_count"] == 2 for item in items))

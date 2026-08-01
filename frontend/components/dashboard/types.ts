@@ -37,8 +37,10 @@ export interface Channel {
   name: string;
   icon: string;
   color: string;
+  pendingStr: string;
   sentStr: string;
   deliveredStr: string;
+  receivedStr: string;
   failedStr: string;
   rateStr: string;
   pct: string;
@@ -76,6 +78,11 @@ export interface Log {
   channelIcon: string;
   ethnic: string;
   recipientsStr: string;
+  pendingStr: string;
+  sentStr: string;
+  receivedStr: string;
+  failedStr: string;
+  trackingAvailable: boolean;
   statusLabel: string;
   pillStyle: string;
 }

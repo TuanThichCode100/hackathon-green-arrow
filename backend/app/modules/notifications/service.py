@@ -1,14 +1,58 @@
 from datetime import datetime
 
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.modules.communes.models import Commune
 from app.modules.notifications.models import Notification, NotificationRecipient
 from app.modules.residents.models import Resident
 
 def list_notifications(db: Session, skip: int=0, limit: int=50):
     total = db.query(Notification).count()
-    items = db.query(Notification).order_by(Notification.sent_at.desc()).offset(skip).limit(limit).all()
+    rows = (
+        db.query(Notification, Commune.name)
+        .join(Commune, Commune.id == Notification.commune_id)
+        .order_by(Notification.sent_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    notification_ids = [notification.id for notification, _ in rows]
+    recipients_by_notification: dict[int, dict[str, int]] = {}
+    if notification_ids:
+        recipient_rows = (
+            db.query(
+                NotificationRecipient.notification_id,
+                NotificationRecipient.status,
+                func.count(NotificationRecipient.id),
+            )
+            .filter(NotificationRecipient.notification_id.in_(notification_ids))
+            .group_by(NotificationRecipient.notification_id, NotificationRecipient.status)
+            .all()
+        )
+        for notification_id, status, count in recipient_rows:
+            recipients_by_notification.setdefault(notification_id, {})[status] = int(count)
+
+    items = []
+    for notification, commune_name in rows:
+        counts = recipients_by_notification.get(notification.id, {})
+        tracked_count = sum(counts.values())
+        items.append({
+            "id": notification.id,
+            "commune_id": notification.commune_id,
+            "commune_name": commune_name,
+            "channel": notification.channel,
+            "ethnic_language": notification.ethnic_language,
+            "recipient_count": notification.recipient_count,
+            "status": notification.status,
+            "sent_at": notification.sent_at,
+            "tracking_available": tracked_count > 0,
+            "pending_count": counts.get("pending", 0),
+            "sent_count": counts.get("sent", 0),
+            "received_count": counts.get("received", 0) + counts.get("delivered", 0),
+            "failed_count": counts.get("failed", 0),
+        })
     return total, items
 
 
