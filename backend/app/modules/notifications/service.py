@@ -100,19 +100,15 @@ def _dispatch_data(db: Session, decision_id: int, commune_id: int) -> dict:
         person["progress"] = "Đã được thông báo" if person["notified"] else "Chưa được thông báo"
     people.sort(key=lambda item: (item["notified"], item["name"].casefold()))
     notified = sum(1 for item in people if item["notified"])
-    return {"decision_id": decision_id, "commune_id": commune_id, "commune_name": commune.name if commune else f"Địa bàn #{commune_id}", "total_residents": len(people), "notified_residents": notified, "not_notified_residents": len(people) - notified, "people": people, "created_at": min(item.created_at for item in notifications), "dispatched_at": max((item.dispatched_at for item in notifications if item.dispatched_at), default=None), "updated_at": max(item.updated_at for item in notifications)}
+    by_channel: dict[str, list[str]] = defaultdict(list)
+    for notification in notifications:
+        by_channel[notification.channel].append(notification.status)
+    return {"decision_id": decision_id, "commune_id": commune_id, "commune_name": commune.name if commune else f"Địa bàn #{commune_id}", "total_residents": len(people), "notified_residents": notified, "not_notified_residents": len(people) - notified, "people": people, "channels": {channel: sorted(set(statuses)) for channel, statuses in by_channel.items()}, "languages": sorted({_language_label(notification.ethnic_language) for notification in notifications}), "created_at": min(item.created_at for item in notifications), "dispatched_at": max((item.dispatched_at for item in notifications if item.dispatched_at), default=None), "updated_at": max(item.updated_at for item in notifications)}
 
 
 def list_dispatches(db: Session, skip: int = 0, limit: int = 50):
     pairs = db.query(Notification.decision_id, Notification.commune_id).filter(Notification.decision_id.is_not(None)).group_by(Notification.decision_id, Notification.commune_id).order_by(func.max(Notification.created_at).desc()).all()
     data = [_dispatch_data(db, decision_id, commune_id) for decision_id, commune_id in pairs]
-    for item in data:
-        batches = db.query(Notification).filter(Notification.decision_id == item["decision_id"], Notification.commune_id == item["commune_id"]).all()
-        by_channel: dict[str, list[str]] = defaultdict(list)
-        for batch in batches:
-            by_channel[batch.channel].append(batch.status)
-        item["channels"] = {channel: sorted(set(statuses)) for channel, statuses in by_channel.items()}
-        item["languages"] = sorted({_language_label(batch.ethnic_language) for batch in batches})
     return len(data), data[skip:skip + limit]
 
 

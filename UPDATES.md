@@ -780,3 +780,17 @@ flowchart LR
     F --> H["Bảng đợt cảnh báo × địa bàn"]
     H --> I["Modal chi tiết người nhận"]
 ```
+
+## Giai đoạn 54 — Sửa API chi tiết đợt phân phối (01/08/2026)
+
+- Sửa lỗi `ResponseValidationError` khi mở chi tiết: payload chi tiết nay cũng trả đủ `channels` và `languages` như schema yêu cầu.
+- Bổ sung regression assertion cho đúng payload này, ngăn lỗi modal chi tiết tái diễn.
+- Đổi nhãn cột UI từ **Cập nhật** thành **Tiến độ ghi nhận gần nhất**. Đây là thời điểm thay đổi trạng thái gần nhất của đợt phân phối, không phải đồng hồ đồng bộ chung của hệ thống.
+
+```mermaid
+flowchart LR
+    A["Bấm đợt phân phối"] --> B["GET chi tiết theo quyết định và địa bàn"]
+    B --> C["Payload channels + languages + people"]
+    C --> D["Schema FastAPI hợp lệ"]
+    D --> E["Modal chi tiết hiển thị"]
+```

@@ -93,3 +93,6 @@ class NotificationRecipientTest(TestCase):
         self.assertEqual(items[0]["not_notified_residents"], 2)
         self.assertEqual(items[0]["languages"], ["Tiếng Mông", "Tiếng Việt"])
         self.assertIn("waiting_content", items[0]["channels"]["sms"])
+        detail = service.get_dispatch_detail(self.db, items[0]["decision_id"], 1)
+        self.assertIn("channels", detail)
+        self.assertIn("languages", detail)
