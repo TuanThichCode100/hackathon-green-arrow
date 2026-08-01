@@ -718,3 +718,24 @@ flowchart LR
     E --> H["KPI tổng quan"]
     I["Xác nhận nhận tin theo từng cư dân"] --> J["KPI đã nhận / chưa phản hồi"]
 ```
+
+## Giai đoạn 51 — Theo dõi phân phối cảnh báo theo từng dân cư (01/08/2026)
+
+- Khi cán bộ kích hoạt cảnh báo, backend tạo từng đợt gửi theo xã/phường và kênh, rồi lập một bản ghi người nhận cho mỗi dân cư thuộc địa bàn đó. Số người nhận không còn là hằng số mô phỏng.
+- Một xã/phường không có dân cư sẽ không sinh đợt gửi rỗng. Mỗi cặp đợt gửi – dân cư được ràng buộc duy nhất ở cơ sở dữ liệu để không thể tạo trùng người nhận trong cùng đợt.
+- Trạng thái được tách rõ: `pending` (chờ phân phối), `sent` (đã được hệ thống/phía cung cấp xác nhận gửi), `received` (đã nhận), `failed` (thất bại). Khi chưa tích hợp nhà cung cấp gửi tin, giao diện chỉ báo đang chờ phân phối, không khẳng định là đã gửi.
+- Có API nội bộ để ghi nhận đợt đã gửi và xác nhận người nhận; KPI tổng quan và số liệu theo kênh chỉ lấy dữ liệu xác nhận này.
+- Kiểm tra: migration Alembic `0008_notification_recipient` áp dụng thành công trên PostgreSQL; 16 regression tests backend và frontend production build đạt.
+
+```mermaid
+flowchart LR
+    A["Cán bộ kích hoạt cảnh báo"] --> B["Chọn xã/phường và kênh"]
+    B --> C["Đọc residents theo commune_id"]
+    C --> D{"Có người nhận?"}
+    D -->|"Có"| E["Tạo đợt gửi pending"]
+    E --> F["Tạo một NotificationRecipient cho mỗi dân cư"]
+    F --> G["Nhà cung cấp hoặc tác vụ gửi xác nhận sent"]
+    G --> H["Ghi nhận received / failed"]
+    H --> I["Bản đồ, tổng quan và thống kê kênh"]
+    D -->|"Không"| J["Không tạo đợt gửi rỗng"]
+```

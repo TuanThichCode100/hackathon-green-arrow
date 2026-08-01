@@ -98,7 +98,7 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
         }),
       });
       if (!response.ok) throw new Error('trigger failed');
-      showToast('Phiên điều phối đã được tạo và thông báo đã được gửi.');
+      showToast('Đã lập danh sách người nhận; các đợt gửi đang chờ hệ thống phân phối.', 'warning');
     } catch {
       showToast('Không thể kết nối máy chủ hoặc lỗi phân quyền. Giao diện đang ở chế độ mô phỏng.', 'error');
     }

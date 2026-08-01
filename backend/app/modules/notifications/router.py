@@ -22,6 +22,30 @@ class ActionRequest(schemas.BaseModel):
 
 from app.modules.notifications.models import Notification
 
+
+@router.post("/{notification_id}/sent", response_model=APIResponse[schemas.NotificationResponse])
+def mark_sent(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role(["tinh"])),
+):
+    notification = service.mark_notification_sent(db, notification_id)
+    db.commit()
+    db.refresh(notification)
+    return {"data": notification}
+
+
+@router.post("/{notification_id}/receipt", response_model=APIResponse[bool])
+def record_receipt(
+    notification_id: int,
+    body: schemas.RecipientReceiptRequest,
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_role(["tinh"])),
+):
+    service.record_recipient_receipt(db, notification_id, body.resident_id)
+    db.commit()
+    return {"data": True}
+
 @router.post("/resend", response_model=APIResponse[str])
 def resend_sms(req: ActionRequest, db: Session = Depends(get_db), user: dict = Depends(require_role(["tinh", "xa"]))):
     notif = Notification(

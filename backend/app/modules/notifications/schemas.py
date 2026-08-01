@@ -9,3 +9,7 @@ class NotificationResponse(BaseModel):
     status: str
     sent_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class RecipientReceiptRequest(BaseModel):
+    resident_id: int

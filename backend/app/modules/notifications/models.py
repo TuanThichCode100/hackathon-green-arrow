@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 from app.core.database import Base
@@ -17,6 +17,9 @@ class Notification(Base):
 
 class NotificationRecipient(Base):
     __tablename__ = "notification_recipients"
+    __table_args__ = (
+        UniqueConstraint("notification_id", "resident_id", name="uq_notification_recipient"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     notification_id: Mapped[int] = mapped_column(Integer, ForeignKey("notifications.id"))
     resident_id: Mapped[int] = mapped_column(Integer)

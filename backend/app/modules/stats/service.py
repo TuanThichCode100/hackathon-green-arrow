@@ -67,12 +67,16 @@ def calc_channel_stats(db: Session, time_range: str):
     for ch in channels:
         sent = db.query(func.sum(Notification.recipient_count)).filter(
             Notification.channel == ch,
-            Notification.sent_at >= start_date
+            Notification.status.in_(["sent", "delivered"]),
+            Notification.sent_at >= start_date,
         ).scalar() or 0
-        delivered = db.query(func.sum(Notification.recipient_count)).filter(
-            Notification.channel == ch, 
-            Notification.status == 'delivered',
-            Notification.sent_at >= start_date
+        delivered = db.query(func.count(NotificationRecipient.id)).join(
+            Notification,
+            Notification.id == NotificationRecipient.notification_id,
+        ).filter(
+            Notification.channel == ch,
+            NotificationRecipient.status.in_(["received", "delivered"]),
+            NotificationRecipient.received_at >= start_date,
         ).scalar() or 0
         failed = db.query(func.sum(Notification.recipient_count)).filter(
             Notification.channel == ch, 
