@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle, WarningCircle, XCircle } from '@phosphor-icons/react';
+import { CheckCircle, WarningCircle, X, XCircle } from '@phosphor-icons/react';
 import { API_BASE_URL, useDashboardData, useDetailData } from '@/lib/api';
 import type { User } from './dashboard/types';
 import Sidebar from './dashboard/Sidebar';
@@ -34,6 +34,9 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
   const [detailId, setDetailId] = useState<string | number | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [reviewDocumentId, setReviewDocumentId] = useState<number | null>(null);
+  const [targetSelectorOpen, setTargetSelectorOpen] = useState(false);
+  const [targetSearch, setTargetSearch] = useState('');
+  const [selectedTargetIds, setSelectedTargetIds] = useState<number[]>([]);
   const [clock, setClock] = useState('');
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'warning' | 'error' } | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -59,6 +62,13 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
       onLoginRequest();
       return;
     }
+    if (!emergency && user.role === 'tinh') {
+      const suggested = snapshot?.communes.filter((commune) => commune.statusLabel === 'Cảnh báo').map((commune) => Number(commune.id)) || [];
+      setSelectedTargetIds(suggested);
+      setTargetSearch('');
+      setTargetSelectorOpen(true);
+      return;
+    }
     const next = !emergency;
     setEmergency(next);
     if (!next) {
@@ -68,14 +78,12 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
     showToast('Đang tạo phiên điều phối khẩn cấp...', 'warning');
     
     // Lấy dữ liệu thực tế
-    let affectedIds = [1, 2, 3];
+    let affectedIds = user.role === 'xa' && user.commune_id ? [Number(user.commune_id)] : [];
     let disasterType = 'Lũ quét';
-    if (snapshot) {
+    if (snapshot && user.role !== 'xa') {
       const alertCommunes = snapshot.communes.filter(c => c.statusLabel === 'Cảnh báo');
       if (alertCommunes.length > 0) {
         affectedIds = alertCommunes.map((commune) => Number(commune.id));
-      } else {
-        affectedIds = snapshot.communes.map((commune) => Number(commune.id)).slice(0, 3);
       }
       
       if (snapshot.predictions && snapshot.predictions.length > 0) {
@@ -101,6 +109,30 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
       showToast('Đã lập danh sách người nhận; các đợt gửi đang chờ hệ thống phân phối.', 'warning');
     } catch {
       showToast('Không thể kết nối máy chủ hoặc lỗi phân quyền. Giao diện đang ở chế độ mô phỏng.', 'error');
+    }
+  };
+
+  const confirmProvinceTargets = async () => {
+    if (!selectedTargetIds.length) {
+      showToast('Hãy chọn ít nhất một địa bàn ảnh hưởng.', 'warning');
+      return;
+    }
+    setTargetSelectorOpen(false);
+    setEmergency(true);
+    showToast('Đang tạo phiên điều phối khẩn cấp...', 'warning');
+    const disasterType = snapshot?.predictions?.[0]?.disaster_type || 'Lũ quét';
+    try {
+      const token = window.localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/api/agent/manual-trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ commune_ids: selectedTargetIds, disaster_type: disasterType, message: 'Cảnh báo phát đi từ trung tâm điều hành' }),
+      });
+      if (!response.ok) throw new Error('trigger failed');
+      showToast('Đã lập danh sách người nhận cho các địa bàn đã chọn.', 'warning');
+    } catch {
+      setEmergency(false);
+      showToast('Không thể tạo đợt phân phối. Vui lòng thử lại.', 'error');
     }
   };
 
@@ -131,6 +163,13 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
       </div>
     );
   }
+
+  const targetCommunes = snapshot.communes.filter((commune) => commune.name.toLocaleLowerCase('vi-VN').includes(targetSearch.trim().toLocaleLowerCase('vi-VN')));
+  const visibleTargetsSelected = targetCommunes.length > 0 && targetCommunes.every((commune) => selectedTargetIds.includes(Number(commune.id)));
+  const toggleTarget = (id: number) => setSelectedTargetIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const toggleVisibleTargets = () => setSelectedTargetIds((current) => visibleTargetsSelected
+    ? current.filter((id) => !targetCommunes.some((commune) => Number(commune.id) === id))
+    : Array.from(new Set([...current, ...targetCommunes.map((commune) => Number(commune.id))])));
 
   return (
     <div className="app-shell">
@@ -182,6 +221,40 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
       )}
       {uploadOpen && <UploadModal setUploadOpen={setUploadOpen} showToast={(message, tone) => showToast(message, tone as any)} onUploaded={setReviewDocumentId} />}
       {reviewDocumentId && <DocumentReviewModal documentId={reviewDocumentId} communes={snapshot.communes.map((commune) => ({ id: Number(commune.id), name: commune.name }))} onClose={() => setReviewDocumentId(null)} onDone={() => { setReviewDocumentId(null); setView('policy'); setPolicyRefresh((version) => version + 1); showToast('Văn bản đã được duyệt và hiển thị trong mục Đã duyệt.'); }} />}
+      {targetSelectorOpen && (
+        <div className="review-backdrop" role="presentation">
+          <section className="dispatch-detail" role="dialog" aria-modal="true" aria-labelledby="target-selector-title" style={{ width: 'min(760px, calc(100vw - 32px))' }}>
+            <header className="document-review-header">
+              <div><p className="eyebrow">Phiên điều phối khẩn cấp</p><h2 id="target-selector-title">Chọn địa bàn ảnh hưởng</h2></div>
+              <button className="icon-button" onClick={() => setTargetSelectorOpen(false)} aria-label="Đóng"><X size={18} /></button>
+            </header>
+            <div className="slideover-body">
+              <p className="metric-label" style={{ marginTop: 0 }}>Dự báo chỉ là gợi ý. Cán bộ tỉnh xác nhận địa bàn trước khi hệ thống lập danh sách phân phối.</p>
+              <input aria-label="Tìm địa bàn" value={targetSearch} onChange={(event) => setTargetSearch(event.target.value)} placeholder="Tìm xã, phường" style={{ width: '100%', margin: '16px 0 10px' }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 12px', borderBottom: '1px solid var(--line)', fontWeight: 600 }}>
+                <input type="checkbox" checked={visibleTargetsSelected} onChange={toggleVisibleTargets} />
+                Chọn tất cả địa bàn đang hiển thị ({targetCommunes.length})
+              </label>
+              <div style={{ maxHeight: 360, overflowY: 'auto', borderBottom: '1px solid var(--line)' }}>
+                {targetCommunes.map((commune) => {
+                  const id = Number(commune.id);
+                  const suggested = commune.statusLabel === 'Cảnh báo';
+                  return <label key={id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 4px', borderBottom: '1px solid var(--line)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={selectedTargetIds.includes(id)} onChange={() => toggleTarget(id)} />
+                    <span style={{ flex: 1 }}>{commune.name}</span>
+                    {suggested && <span className="status-pill status-warning">Dự báo đề xuất</span>}
+                  </label>;
+                })}
+                {!targetCommunes.length && <p className="metric-label" style={{ padding: '18px 4px' }}>Không tìm thấy địa bàn phù hợp.</p>}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 20 }}>
+                <span className="metric-label">Đã chọn {selectedTargetIds.length} / {snapshot.communes.length} địa bàn</span>
+                <div style={{ display: 'flex', gap: 10 }}><button className="secondary-button" onClick={() => setTargetSelectorOpen(false)}>Hủy</button><button className="primary-button" onClick={confirmProvinceTargets}>Xác nhận địa bàn</button></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
       {toast && (
         <div className="toast" role="status">
           {toast.tone === 'success' ? <CheckCircle size={17} weight="fill" /> : toast.tone === 'warning' ? <WarningCircle size={17} weight="fill" /> : <XCircle size={17} weight="fill" />}

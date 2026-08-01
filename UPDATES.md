@@ -807,3 +807,20 @@ flowchart LR
     C --> D["Tạo người nhận của đợt đó"]
     E["Dân cư ở địa bàn khác"] --> F["Giữ trong sổ dân cư, không thuộc đợt hiện tại"]
 ```
+
+## Giai đoạn 56 — Chọn địa bàn trước khi điều phối cảnh báo (01/08/2026)
+
+- Khi cán bộ tỉnh bật phiên điều phối khẩn cấp, hệ thống hiển thị hộp chọn địa bàn có tìm kiếm, chọn nhiều địa bàn và chọn tất cả. Toàn bộ xã/phường trong dữ liệu hiện hành đều có thể được chọn; các địa bàn đang có cảnh báo chỉ được đánh dấu là **Dự báo đề xuất**, không tự động quyết định phạm vi gửi.
+- Chỉ sau thao tác **Xác nhận địa bàn**, hệ thống mới gọi API tạo đợt phân phối và danh sách người nhận.
+- Cán bộ xã không được chọn hoặc mở rộng phạm vi. Backend ép yêu cầu điều phối về đúng `commune_id` đã gán cho tài khoản, kể cả khi một yêu cầu bị can thiệp từ trình duyệt.
+- Kiểm tra: frontend production build đạt; API điều phối đã giới hạn quyền theo vai trò và địa bàn.
+
+```mermaid
+flowchart LR
+    A["Cán bộ tỉnh bật điều phối"] --> B["Hiển thị toàn bộ địa bàn"]
+    B --> C["Tìm kiếm, tích chọn và xác nhận"]
+    C --> D["POST manual-trigger với địa bàn đã xác nhận"]
+    D --> E["Tạo đợt gửi và người nhận"]
+    F["Cán bộ xã bật điều phối"] --> G["Backend ép commune_id được gán"]
+    G --> E
+```
