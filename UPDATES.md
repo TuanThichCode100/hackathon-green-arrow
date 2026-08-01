@@ -794,3 +794,16 @@ flowchart LR
     C --> D["Schema FastAPI hợp lệ"]
     D --> E["Modal chi tiết hiển thị"]
 ```
+
+## Giai đoạn 55 — Làm rõ thời gian và phạm vi người nhận (01/08/2026)
+
+- Cột **Khởi tạo** nay hiển thị đầy đủ ngày, tháng, năm, giờ và phút.
+- Xác nhận nguyên tắc phạm vi: một đợt phân phối chỉ lấy `residents` thuộc các xã/phường được chọn khi kích hoạt cảnh báo. Dân cư được thêm thủ công ở địa bàn khác không bị mất, nhưng không xuất hiện trong đợt cảnh báo không nhắm đến địa bàn đó.
+
+```mermaid
+flowchart LR
+    A["Kích hoạt cảnh báo"] --> B["Chọn địa bàn ảnh hưởng"]
+    B --> C["Lọc residents theo commune_id"]
+    C --> D["Tạo người nhận của đợt đó"]
+    E["Dân cư ở địa bàn khác"] --> F["Giữ trong sổ dân cư, không thuộc đợt hiện tại"]
+```
