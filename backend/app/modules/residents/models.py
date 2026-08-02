@@ -11,6 +11,8 @@ class Resident(Base):
     name: Mapped[str] = mapped_column(String)
     phone: Mapped[str] = mapped_column(String, unique=True, index=True)
     ethnic: Mapped[str] = mapped_column(String)
-    preferred_alert_language: Mapped[str] = mapped_column(String, default="vi")
+    # This records the language a resident primarily uses. Dispatching derives
+    # its language groups from this fact; it is not merely a UI preference.
+    primary_language: Mapped[str] = mapped_column(String, default="vi")
     literate: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

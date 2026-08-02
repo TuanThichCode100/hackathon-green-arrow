@@ -130,6 +130,7 @@ def manual_trigger(db: Session, request):
                 decision_id=decision.id,
                 channel=channel,
                 vietnamese_content=f"[{request.disaster_type}] {message}",
+                awaiting_commune_confirmation=True,
             )
 
     db.commit()

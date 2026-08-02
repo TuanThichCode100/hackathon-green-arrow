@@ -35,3 +35,7 @@ class DispatchDetailResponse(DispatchResponse):
 
 class RecipientReceiptRequest(BaseModel):
     resident_id: int
+
+
+class DispatchActivationRequest(BaseModel):
+    channels: list[str]

@@ -202,7 +202,7 @@ export default function Dashboard({ user, onLogout, onLoginRequest }: Props) {
           {view === 'overview' && <OverviewView m={snapshot} />}
           {view === 'communes' && <CommunesView m={snapshot} setDetailId={setDetailId} />}
           {view === 'policy' && <PolicyView key={policyRefresh} m={snapshot} user={user} setUploadOpen={setUploadOpen} />}
-          {view === 'channels' && <ChannelsView m={snapshot} />}
+          {view === 'channels' && <ChannelsView m={snapshot} isProv={user?.role === 'tinh'} assignedCommuneId={user?.commune_id} />}
           {view === 'roles' && <RolesView user={user} />}
           {view === 'database' && <ResidentsDB isProv={user?.role === 'tinh'} assignedCommuneId={user?.commune_id} showToast={showToast} communesData={snapshot.communes} />}
           {view === 'feedback' && <FeedbackView user={user} showToast={showToast} />}

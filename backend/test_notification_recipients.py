@@ -24,7 +24,7 @@ class NotificationRecipientTest(TestCase):
             Commune(id=1, name="A", lat=21.0, lng=103.0, population=999),
             Commune(id=2, name="B", lat=22.0, lng=102.0, population=999),
             Resident(commune_id=1, name="One", phone="0900000011", ethnic="Kinh", literate=True),
-            Resident(commune_id=1, name="Two", phone="0900000012", ethnic="Thai", preferred_alert_language="hmn", literate=True),
+            Resident(commune_id=1, name="Two", phone="0900000012", ethnic="Thai", primary_language="hmn", literate=True),
         ])
         self.db.commit()
 
@@ -91,8 +91,18 @@ class NotificationRecipientTest(TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(items[0]["total_residents"], 2)
         self.assertEqual(items[0]["not_notified_residents"], 2)
-        self.assertEqual(items[0]["languages"], ["Tiếng Mông", "Tiếng Việt"])
-        self.assertIn("waiting_content", items[0]["channels"]["sms"])
+        self.assertEqual(items[0]["languages"], ["Tiếng Kinh", "Tiếng Mông"])
+        self.assertIn("awaiting_commune_confirmation", items[0]["channels"]["sms"])
         detail = service.get_dispatch_detail(self.db, items[0]["decision_id"], 1)
         self.assertIn("channels", detail)
         self.assertIn("languages", detail)
+
+    def test_commune_activates_only_selected_channels(self):
+        decision = agent_service.manual_trigger(self.db, SimpleNamespace(commune_ids=[1], disaster_type="flood", message="Test"))
+        service.activate_dispatch(self.db, decision.id, 1, ["sms"])
+        self.db.commit()
+        statuses = {}
+        for item in self.db.query(Notification).all():
+            statuses.setdefault(item.channel, set()).add(item.status)
+        self.assertIn("pending", statuses["sms"])
+        self.assertIn("awaiting_commune_confirmation", statuses["zalo"])

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.residents.models import Resident
 from app.modules.communes.models import Commune
+from app.modules.residents.languages import primary_language_for
 
 
 PHONE_PATTERN = re.compile(r"^0\d{9}$")
@@ -22,7 +23,9 @@ def list_residents(db: Session, commune_id: int = None, ethnic: str = None, skip
 
 def create_resident(db: Session, data):
     try:
-        resident = Resident(**data.model_dump())
+        values = data.model_dump()
+        values["primary_language"] = primary_language_for(values["ethnic"], values.get("primary_language"))
+        resident = Resident(**values)
         db.add(resident)
         db.commit()
         db.refresh(resident)
@@ -53,6 +56,10 @@ def update_resident(
             update_data.pop("commune_id", None)
         if "commune_id" in update_data and not db.query(Commune.id).filter(Commune.id == update_data["commune_id"]).first():
             raise HTTPException(status_code=422, detail="Xã/phường được chọn không còn trong danh mục hiện hành")
+        if "ethnic" in update_data or "primary_language" in update_data:
+            update_data["primary_language"] = primary_language_for(
+                update_data.get("ethnic", resident.ethnic), update_data.get("primary_language")
+            )
         changed = {key: value for key, value in update_data.items() if getattr(resident, key) != value}
         if not changed:
             raise HTTPException(status_code=422, detail="Chưa có thông tin nào thay đổi để lưu")
@@ -116,7 +123,7 @@ def import_residents(db: Session, records: list[dict]):
             errors.append({"row": source_row, "reason": "Số điện thoại bị trùng trong tệp CSV."})
         else:
             accepted_phones.add(phone)
-            accepted.append({"commune_id": commune_id, "name": name, "phone": phone, "ethnic": ethnic, "preferred_alert_language": (row.get("preferred_alert_language") or "vi").strip(), "literate": bool(row.get("literate", True))})
+            accepted.append({"commune_id": commune_id, "name": name, "phone": phone, "ethnic": ethnic, "primary_language": primary_language_for(ethnic, (row.get("primary_language") or "").strip()), "literate": bool(row.get("literate", True))})
 
     try:
         if accepted:

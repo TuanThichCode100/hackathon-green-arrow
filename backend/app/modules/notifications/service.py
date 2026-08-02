@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 from app.modules.communes.models import Commune
 from app.modules.notifications.models import Notification, NotificationRecipient
 from app.modules.residents.models import Resident
+from app.modules.residents.languages import LANGUAGE_LABELS
 
 
-LANGUAGE_LABELS = {"vi": "Tiếng Việt", "hmn": "Tiếng Mông", "tai": "Tiếng Thái", "khmu": "Tiếng Khơ Mú", "dao": "Tiếng Dao"}
 ACTIVE_DELIVERY = {"sent", "received", "delivered"}
 
 
@@ -18,7 +18,7 @@ def _language_label(code: str) -> str:
     return LANGUAGE_LABELS.get(code, code or "Chưa xác định")
 
 
-def _create_batch(db: Session, *, commune_id: int, decision_id: int | None, channel: str, language: str, content: str, resident_ids: list[int]) -> Notification:
+def _create_batch(db: Session, *, commune_id: int, decision_id: int | None, channel: str, language: str, content: str, resident_ids: list[int], awaiting_commune_confirmation: bool = False) -> Notification:
     waiting_content = language != "vi" and not content
     now = datetime.utcnow()
     notification = Notification(
@@ -28,13 +28,13 @@ def _create_batch(db: Session, *, commune_id: int, decision_id: int | None, chan
         ethnic_language=language,
         content=content,
         recipient_count=len(resident_ids),
-        status="waiting_content" if waiting_content else "pending",
+        status="waiting_content" if waiting_content else "awaiting_commune_confirmation" if awaiting_commune_confirmation else "pending",
         created_at=now,
         updated_at=now,
     )
     db.add(notification)
     db.flush()
-    recipient_status = "waiting_content" if waiting_content else "pending"
+    recipient_status = "waiting_content" if waiting_content else "awaiting_commune_confirmation" if awaiting_commune_confirmation else "pending"
     db.add_all([NotificationRecipient(notification_id=notification.id, resident_id=resident_id, status=recipient_status) for resident_id in resident_ids])
     return notification
 
@@ -46,21 +46,23 @@ def create_notification_with_recipients(db: Session, *, commune_id: int, decisio
     return _create_batch(db, commune_id=commune_id, decision_id=decision_id, channel=channel, language=ethnic_language, content=content, resident_ids=resident_ids)
 
 
-def create_language_dispatches(db: Session, *, commune_id: int, decision_id: int, channel: str, vietnamese_content: str) -> list[Notification]:
+def create_language_dispatches(db: Session, *, commune_id: int, decision_id: int, channel: str, vietnamese_content: str, awaiting_commune_confirmation: bool = False) -> list[Notification]:
     groups: dict[str, list[int]] = defaultdict(list)
-    for resident_id, language in db.query(Resident.id, Resident.preferred_alert_language).filter(Resident.commune_id == commune_id):
+    for resident_id, language in db.query(Resident.id, Resident.primary_language).filter(Resident.commune_id == commune_id):
         groups[language or "vi"].append(resident_id)
     return [
-        _create_batch(db, commune_id=commune_id, decision_id=decision_id, channel=channel, language=language, content=vietnamese_content if language == "vi" else "", resident_ids=resident_ids)
+        _create_batch(db, commune_id=commune_id, decision_id=decision_id, channel=channel, language=language, content=vietnamese_content if language == "vi" else "", resident_ids=resident_ids, awaiting_commune_confirmation=awaiting_commune_confirmation)
         for language, resident_ids in groups.items()
     ]
 
 
-def mark_notification_sent(db: Session, notification_id: int) -> Notification:
+def mark_notification_sent(db: Session, notification_id: int, commune_id: int | None = None) -> Notification:
     notification = db.get(Notification, notification_id)
     if not notification:
         raise HTTPException(status_code=404, detail="Không tìm thấy đợt gửi cảnh báo")
-    if notification.status in {"failed", "waiting_content"}:
+    if commune_id is not None and notification.commune_id != commune_id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền phân phối ngoài địa bàn phụ trách")
+    if notification.status in {"failed", "waiting_content", "awaiting_commune_confirmation"}:
         raise HTTPException(status_code=409, detail="Đợt gửi chưa có nội dung phù hợp hoặc đã thất bại")
     now = datetime.utcnow()
     notification.status, notification.dispatched_at, notification.updated_at = "sent", now, now
@@ -69,13 +71,35 @@ def mark_notification_sent(db: Session, notification_id: int) -> Notification:
     return notification
 
 
-def record_recipient_receipt(db: Session, notification_id: int, resident_id: int) -> NotificationRecipient:
+def activate_dispatch(db: Session, decision_id: int, commune_id: int, channels: list[str]) -> dict:
+    """Let the assigned commune activate only the delivery channels it can operate."""
+    selected = set(channels)
+    notifications = db.query(Notification).filter(Notification.decision_id == decision_id, Notification.commune_id == commune_id).all()
+    if not notifications:
+        raise HTTPException(status_code=404, detail="Không tìm thấy đợt phân phối")
+    if not selected:
+        raise HTTPException(status_code=422, detail="Chọn ít nhất một kênh phân phối")
+    available = {item.channel for item in notifications}
+    if not selected.issubset(available):
+        raise HTTPException(status_code=422, detail="Kênh phân phối không thuộc đợt này")
+    now = datetime.utcnow()
+    for notification in notifications:
+        if notification.channel in selected and notification.status == "awaiting_commune_confirmation":
+            notification.status, notification.updated_at = "pending", now
+            db.query(NotificationRecipient).filter(NotificationRecipient.notification_id == notification.id, NotificationRecipient.status == "awaiting_commune_confirmation").update({NotificationRecipient.status: "pending"}, synchronize_session=False)
+    db.flush()
+    return _dispatch_data(db, decision_id, commune_id)
+
+
+def record_recipient_receipt(db: Session, notification_id: int, resident_id: int, commune_id: int | None = None) -> NotificationRecipient:
     recipient = db.query(NotificationRecipient).filter(NotificationRecipient.notification_id == notification_id, NotificationRecipient.resident_id == resident_id).first()
     if not recipient:
         raise HTTPException(status_code=404, detail="Không tìm thấy người nhận trong đợt gửi này")
+    notification = db.get(Notification, notification_id)
+    if commune_id is not None and (not notification or notification.commune_id != commune_id):
+        raise HTTPException(status_code=403, detail="Bạn không có quyền ghi nhận ngoài địa bàn phụ trách")
     recipient.status = "received"
     recipient.received_at = recipient.received_at or datetime.utcnow()
-    notification = db.get(Notification, notification_id)
     if notification:
         notification.updated_at = datetime.utcnow()
     db.flush()
@@ -91,7 +115,7 @@ def _dispatch_data(db: Session, decision_id: int, commune_id: int) -> dict:
     recipients = db.query(NotificationRecipient, Resident, Notification).join(Resident, Resident.id == NotificationRecipient.resident_id).join(Notification, Notification.id == NotificationRecipient.notification_id).filter(NotificationRecipient.notification_id.in_(notification_ids)).all()
     by_resident: dict[int, dict] = {}
     for recipient, resident, notification in recipients:
-        item = by_resident.setdefault(resident.id, {"id": resident.id, "name": resident.name, "phone": resident.phone, "ethnic": resident.ethnic, "preferred_alert_language": resident.preferred_alert_language, "channels": {}})
+        item = by_resident.setdefault(resident.id, {"id": resident.id, "name": resident.name, "phone": resident.phone, "ethnic": resident.ethnic, "primary_language": resident.primary_language, "channels": {}})
         item["channels"].setdefault(notification.channel, []).append({"language": notification.ethnic_language, "status": recipient.status})
     people = list(by_resident.values())
     for person in people:
@@ -106,8 +130,11 @@ def _dispatch_data(db: Session, decision_id: int, commune_id: int) -> dict:
     return {"decision_id": decision_id, "commune_id": commune_id, "commune_name": commune.name if commune else f"Địa bàn #{commune_id}", "total_residents": len(people), "notified_residents": notified, "not_notified_residents": len(people) - notified, "people": people, "channels": {channel: sorted(set(statuses)) for channel, statuses in by_channel.items()}, "languages": sorted({_language_label(notification.ethnic_language) for notification in notifications}), "created_at": min(item.created_at for item in notifications), "dispatched_at": max((item.dispatched_at for item in notifications if item.dispatched_at), default=None), "updated_at": max(item.updated_at for item in notifications)}
 
 
-def list_dispatches(db: Session, skip: int = 0, limit: int = 50):
-    pairs = db.query(Notification.decision_id, Notification.commune_id).filter(Notification.decision_id.is_not(None)).group_by(Notification.decision_id, Notification.commune_id).order_by(func.max(Notification.created_at).desc()).all()
+def list_dispatches(db: Session, skip: int = 0, limit: int = 50, commune_id: int | None = None):
+    query = db.query(Notification.decision_id, Notification.commune_id).filter(Notification.decision_id.is_not(None))
+    if commune_id is not None:
+        query = query.filter(Notification.commune_id == commune_id)
+    pairs = query.group_by(Notification.decision_id, Notification.commune_id).order_by(func.max(Notification.created_at).desc()).all()
     data = [_dispatch_data(db, decision_id, commune_id) for decision_id, commune_id in pairs]
     return len(data), data[skip:skip + limit]
 

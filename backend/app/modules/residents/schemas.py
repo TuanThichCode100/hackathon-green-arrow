@@ -10,7 +10,7 @@ class ResidentCreate(BaseModel):
     name: str
     phone: str
     ethnic: str
-    preferred_alert_language: str = "vi"
+    primary_language: Optional[str] = None
     literate: bool = True
 
 
@@ -19,7 +19,7 @@ class ResidentUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
     ethnic: Optional[str] = None
-    preferred_alert_language: Optional[str] = None
+    primary_language: Optional[str] = None
     literate: Optional[bool] = None
 
 
@@ -37,7 +37,7 @@ class ResidentImportRecord(BaseModel):
     name: str = ""
     phone: str = ""
     ethnic: str = ""
-    preferred_alert_language: str = "vi"
+    primary_language: Optional[str] = None
     literate: bool = True
     source_row: int = 0
 
