@@ -136,8 +136,8 @@ export function useDashboardData(emergency: boolean, timeRange: string): Dashboa
     logs = notificationsData.items.map(n => ({
       decisionId: n.decision_id,
       communeId: n.commune_id,
-      time: new Date(n.created_at).toLocaleString('vi-VN', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}),
-      updatedAt: new Date(n.updated_at).toLocaleString('vi-VN', {hour:'2-digit', minute:'2-digit'}),
+      time: new Date(n.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}),
+      updatedAt: new Date(n.updated_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour:'2-digit', minute:'2-digit'}),
       commune: n.commune_name,
       channel: Object.keys(n.channels).join(' · '),
       channelIcon: '',
